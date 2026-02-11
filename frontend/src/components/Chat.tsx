@@ -51,7 +51,7 @@ function Chat() {
     try {
       const result = await apiService.sendQuery({
         request: queryText,
-        sessionId: sessionId || undefined
+        ...(sessionId ? { sessionId } : {})
       })
 
       const agentMessage: Message = {
