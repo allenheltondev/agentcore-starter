@@ -8,7 +8,7 @@ Required Environment Variables:
 
 Optional Environment Variables:
     - AWS_REGION: AWS region (default: us-east-1)
-    - BEDROCK_MODEL_ID: Bedrock model ID (default: us.anthropic.claude-sonnet-4-5-20250929-v1:0)
+    - BEDROCK_MODEL_ID: Bedrock model ID (default: us.amazon.nova-lite-v1:0)
 """
 
 import os
@@ -27,7 +27,7 @@ app = BedrockAgentCoreApp()
 
 AGENTCORE_MEMORY_ID = os.environ.get("AGENTCORE_MEMORY_ID")
 AWS_REGION = os.environ.get("AWS_REGION", os.environ.get("AWS_DEFAULT_REGION", "us-east-1"))
-BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
+BEDROCK_MODEL_ID = os.environ.get("BEDROCK_MODEL_ID", "us.amazon.nova-lite-v1:0")
 
 if not AGENTCORE_MEMORY_ID:
     raise ValueError("AGENTCORE_MEMORY_ID environment variable is required but not set")
