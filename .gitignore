@@ -24,7 +24,6 @@ backend/agents/rhyme-agent/uv.lock
 venv/
 mydocs/
 teste-agent.py
-requirements.txt
 data.parquet
 output.json
 parquet-to-json.py

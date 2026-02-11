@@ -26,7 +26,6 @@ default:
       parameter_overrides:
         - ArtifactsBucketName=$ARTIFACTS_BUCKET_NAME
         - AgentDirectDeployKey=$AGENT_DIRECT_DEPLOY_KEY
-        - AgentImageUri=$AGENT_IMAGE_URI
         - EnvironmentHash=$ENV_HASH
       tags:
         - caylent:owner=andres.moreno@caylent.com thiago.ianino@caylent.com

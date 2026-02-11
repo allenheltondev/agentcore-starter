@@ -12,10 +12,6 @@ Parameters:
     Description: S3 key for agent deployment ZIP file
     Default: "agents/agent.zip"
 
-  AgentImageUri:
-    Type: String
-    Description: ECR image URI for agent Docker container
-
   EnvironmentHash:
     Type: String
     Description: A hash of the current environment
@@ -167,19 +163,6 @@ Resources:
       EnvironmentVariables:
         AGENTCORE_MEMORY_ID: !GetAtt AgentCoreShortTermMemory.MemoryId
 
-  AgentCoreRuntimeContainer:
-    Type: AWS::BedrockAgentCore::Runtime
-    Properties:
-      AgentRuntimeArtifact:
-        ContainerConfiguration:
-          ContainerUri: !Ref AgentImageUri
-      AgentRuntimeName: !Sub AgentContainer${EnvironmentHash}
-      NetworkConfiguration:
-        NetworkMode: PUBLIC
-      RoleArn: !GetAtt AgentCoreRole.Arn
-      EnvironmentVariables:
-        AGENTCORE_MEMORY_ID: !GetAtt AgentCoreShortTermMemory.MemoryId
-
   AgentCoreRole:
     Type: AWS::IAM::Role
     Properties:
@@ -199,13 +182,6 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ECRImageAccess
-                Effect: Allow
-                Action:
-                  - ecr:BatchGetImage
-                  - ecr:GetDownloadUrlForLayer
-                Resource:
-                  - !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/*"
               - Sid: S3DirectDeployAccess
                 Effect: Allow
                 Action:
@@ -229,11 +205,6 @@ Resources:
                   - logs:PutLogEvents
                 Resource:
                   - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
-              - Sid: ECRTokenAccess
-                Effect: Allow
-                Action:
-                  - ecr:GetAuthorizationToken
-                Resource: "*"
               - Effect: Allow
                 Action:
                   - xray:PutTraceSegments
@@ -319,10 +290,6 @@ Outputs:
   AgentCoreRuntimeId:
     Description: "AgentCore Runtime ID for the Agent"
     Value: !Ref AgentCoreRuntime
-
-  AgentCoreRuntimeContainerId:
-    Description: "AgentCore Runtime ID for the Agent (container deployment)"
-    Value: !Ref AgentCoreRuntimeContainer
 
   AgentCoreMemoryId:
     Description: "AgentCore Short-Term Memory ID"
