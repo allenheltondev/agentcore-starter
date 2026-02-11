@@ -1,8 +1,9 @@
-// API configuration - baseUrl is injected at build time by build-with-api-config.sh
-// For local development, update this with your backend API URL
+// API configuration
+// For local development, set VITE_API_BASE_URL in .env.local
+// For CI/CD builds, it's injected by build-with-api-config.sh
 
 export const API_CONFIG = {
-  baseUrl: 'http://localhost:3000/api/',
+  baseUrl: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api/',
   endpoints: {
     query: 'query'
   }
