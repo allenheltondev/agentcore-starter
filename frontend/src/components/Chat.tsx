@@ -29,7 +29,7 @@ function Chat() {
   // Generate a session ID if we don't have one
   useEffect(() => {
     if (!sessionId) {
-      const newSessionId = `session_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
+      const newSessionId = crypto.randomUUID()
       setSessionId(newSessionId)
       navigate(`/chat/${newSessionId}`, { replace: true })
     }

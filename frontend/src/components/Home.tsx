@@ -11,7 +11,7 @@ function Home() {
     if (!query.trim()) return
 
     // Generate a session ID and navigate to chat
-    const sessionId = `session_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`
+    const sessionId = crypto.randomUUID()
     navigate(`/chat/${sessionId}`, { state: { initialQuery: query.trim() } })
     setQuery('')
   }
