@@ -4671,21 +4671,22 @@
 .thinking-section summary {
   cursor: pointer;
   padding: 0.5rem 0.75rem;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
-  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.05);
   user-select: none;
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 
 .thinking-section summary::before {
   content: '▶';
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   transition: transform 0.2s;
+  display: inline-block;
 }
 
 .thinking-section[open] summary::before {
@@ -4693,8 +4694,8 @@
 }
 
 .thinking-section summary:hover {
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .thinking-content {

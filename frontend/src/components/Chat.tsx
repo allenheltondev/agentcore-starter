@@ -44,45 +44,41 @@ function Chat() {
     }
   }, [sessionId, navigate])
 
+  // Connect (or reconnect) the WebSocket, fetching a fresh presigned URL
+  const connectWebSocket = async () => {
+    if (!sessionId || !user) return
+
+    try {
+      setConnectionStatus('connecting')
+
+      // Tear down any existing connection
+      if (wsServiceRef.current) {
+        wsServiceRef.current.disconnect()
+      }
+
+      const wsService = new WebSocketService()
+      wsServiceRef.current = wsService
+
+      wsService.on('stream_event', handleStreamEvent)
+      wsService.on('complete', handleComplete)
+      wsService.on('error', handleError)
+      wsService.on('close', handleClose)
+
+      await wsService.connect(sessionId)
+
+      setConnectionStatus('connected')
+      console.log('WebSocket connection ready')
+    } catch (error) {
+      console.error('Failed to initialize WebSocket:', error)
+      setConnectionStatus('disconnected')
+    }
+  }
+
   // Initialize WebSocket connection
   useEffect(() => {
     if (!sessionId || !user) return
 
-    const initializeWebSocket = async () => {
-      try {
-        setConnectionStatus('connecting')
-
-        const wsService = new WebSocketService()
-        wsServiceRef.current = wsService
-
-        // Set up event listeners
-        wsService.on('stream_event', handleStreamEvent)
-        wsService.on('complete', handleComplete)
-        wsService.on('error', handleError)
-        wsService.on('close', handleClose)
-
-        // Connect to WebSocket with JWT authentication
-        await wsService.connect(sessionId, user.sub)
-
-        setConnectionStatus('connected')
-        console.log('✅ WebSocket connection ready')
-      } catch (error) {
-        console.error('❌ Failed to initialize WebSocket:', error)
-        setConnectionStatus('disconnected')
-
-        // Show error message
-        const errorMessage: Message = {
-          id: Date.now().toString(),
-          text: 'Failed to establish WebSocket connection. Please refresh the page.',
-          sender: 'agent',
-          timestamp: new Date(),
-          error: true
-        }
-        setMessages(prev => [...prev, errorMessage])
-      }
-    }
-
-    initializeWebSocket()
+    connectWebSocket()
 
     // Cleanup on unmount
     return () => {
@@ -90,6 +86,31 @@ function Chat() {
         wsServiceRef.current.disconnect()
         wsServiceRef.current = null
       }
+    }
+  }, [sessionId, user])
+
+  // Auto-reconnect when tab becomes visible or network is restored
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !wsServiceRef.current?.isConnected()) {
+        console.log('Tab active — reconnecting WebSocket')
+        connectWebSocket()
+      }
+    }
+
+    const handleOnline = () => {
+      if (!wsServiceRef.current?.isConnected()) {
+        console.log('Network restored — reconnecting WebSocket')
+        connectWebSocket()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('online', handleOnline)
     }
   }, [sessionId, user])
 
@@ -109,7 +130,6 @@ function Chat() {
         }
         return ''
       })
-      console.log(`🔧 Agent using tool: ${toolName}`)
     }
 
     // Handle text streaming
@@ -129,9 +149,6 @@ function Chat() {
 
   // Handle completion of streaming
   const handleComplete = () => {
-    console.log('✅ Stream complete, finalizing message...')
-
-    // Finalize the streaming message
     if (streamingText || thinkingText) {
       const agentMessage: Message = {
         id: Date.now().toString(),
