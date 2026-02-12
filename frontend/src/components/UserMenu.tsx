@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import { getUserId, setUserId, resetUserId, isCustomUserId } from '../services/userService'
 import './UserMenu.css'
 
@@ -9,6 +11,8 @@ function UserMenu() {
   const [editValue, setEditValue] = useState<string>('')
   const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
 
   useEffect(() => {
     setUserIdState(getUserId())
@@ -101,6 +105,12 @@ function UserMenu() {
     }
   }
 
+  const handleSignOut = () => {
+    signOut()
+    setIsOpen(false)
+    navigate('/login')
+  }
+
   const customUserId = isCustomUserId()
 
   return (
@@ -129,72 +139,104 @@ function UserMenu() {
 
       {isOpen && (
         <div className="user-menu-dropdown">
-          <div className="user-menu-header">
-            <span className="user-menu-label">User ID</span>
-            {customUserId && (
-              <button
-                className="user-menu-reset"
-                onClick={handleReset}
-                aria-label="Reset to default"
-                title="Reset to default"
-              >
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+          {user && (
+            <div className="user-menu-section">
+              <div className="user-menu-email">{user.email}</div>
+            </div>
+          )}
+
+          <div className="user-menu-section">
+            <div className="user-menu-header">
+              <span className="user-menu-label">User ID</span>
+              {customUserId && (
+                <button
+                  className="user-menu-reset"
+                  onClick={handleReset}
+                  aria-label="Reset to default"
+                  title="Reset to default"
                 >
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {isEditing ? (
+              <div className="user-menu-edit">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  className="user-menu-input"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Enter user ID"
+                />
+                <div className="user-menu-edit-actions">
+                  <button
+                    className="user-menu-save"
+                    onClick={handleSave}
+                    aria-label="Save"
+                  >
+                    Save
+                  </button>
+                  <button
+                    className="user-menu-cancel"
+                    onClick={handleCancel}
+                    aria-label="Cancel"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="user-menu-content">
+                <div className="user-menu-userid">{userId}</div>
+                <button
+                  className="user-menu-edit-button"
+                  onClick={handleEditClick}
+                  aria-label="Edit user ID"
+                >
+                  Edit
+                </button>
+              </div>
             )}
           </div>
 
-          {isEditing ? (
-            <div className="user-menu-edit">
-              <input
-                ref={inputRef}
-                type="text"
-                className="user-menu-input"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Enter user ID"
-              />
-              <div className="user-menu-edit-actions">
-                <button
-                  className="user-menu-save"
-                  onClick={handleSave}
-                  aria-label="Save"
-                >
-                  Save
-                </button>
-                <button
-                  className="user-menu-cancel"
-                  onClick={handleCancel}
-                  aria-label="Cancel"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="user-menu-content">
-              <div className="user-menu-userid">{userId}</div>
-              <button
-                className="user-menu-edit-button"
-                onClick={handleEditClick}
-                aria-label="Edit user ID"
+          <div className="user-menu-section user-menu-actions">
+            <button
+              className="user-menu-logout"
+              onClick={handleSignOut}
+              aria-label="Sign out"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                Edit
-              </button>
-            </div>
-          )}
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              Sign Out
+            </button>
+          </div>
         </div>
       )}
     </div>
