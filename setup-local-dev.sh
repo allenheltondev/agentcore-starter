@@ -152,9 +152,9 @@ fi
 
 print_success "Frontend dependencies installed"
 
-# Fetch API configuration if backend is deployed
+# Fetch API and Cognito configuration if backend is deployed
 if [ "$DEPLOY_BACKEND" = "true" ] || aws cloudformation describe-stacks --stack-name "$BACKEND_STACK_NAME" &> /dev/null; then
-    print_step "Fetching API configuration from backend stack..."
+    print_step "Fetching configuration from backend stack..."
 
     BACKEND_API_URL=$(aws cloudformation describe-stacks \
         --stack-name "$BACKEND_STACK_NAME" \
@@ -162,8 +162,41 @@ if [ "$DEPLOY_BACKEND" = "true" ] || aws cloudformation describe-stacks --stack-
         --query "Stacks[0].Outputs[?OutputKey=='BackendApiUrl'].OutputValue" \
         --output text 2>/dev/null || echo "")
 
-    if [ -n "$BACKEND_API_URL" ] && [ "$BACKEND_API_URL" != "None" ]; then
-        # Update API config with the backend URL
+    USER_POOL_ID=$(aws cloudformation describe-stacks \
+        --stack-name "$BACKEND_STACK_NAME" \
+        --region "$AWS_REGION" \
+        --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+        --output text 2>/dev/null || echo "")
+
+    USER_POOL_CLIENT_ID=$(aws cloudformation describe-stacks \
+        --stack-name "$BACKEND_STACK_NAME" \
+        --region "$AWS_REGION" \
+        --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" \
+        --output text 2>/dev/null || echo "")
+
+    if [ -n "$BACKEND_API_URL" ] && [ "$BACKEND_API_URL" != "None" ] && \
+       [ -n "$USER_POOL_ID" ] && [ "$USER_POOL_ID" != "None" ] && \
+       [ -n "$USER_POOL_CLIENT_ID" ] && [ "$USER_POOL_CLIENT_ID" != "None" ]; then
+
+        # Create .env.local file with all configuration
+        cat > .env.local << EOF
+# Auto-generated configuration from backend stack
+# Generated at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# Backend Stack: $BACKEND_STACK_NAME
+# Region: $AWS_REGION
+
+# Backend API Configuration
+VITE_API_BASE_URL=$BACKEND_API_URL
+
+# AWS Cognito Configuration
+VITE_USER_POOL_ID=$USER_POOL_ID
+VITE_USER_POOL_CLIENT_ID=$USER_POOL_CLIENT_ID
+VITE_AWS_REGION=$AWS_REGION
+EOF
+
+        print_success "Environment configuration saved to .env.local"
+
+        # Also update API config for reference
         mkdir -p src/config
         cat > src/config/api.ts << EOF
 // Auto-generated API configuration from backend stack
@@ -183,12 +216,13 @@ EOF
 
         print_success "API configuration saved to src/config/api.ts"
     else
-        print_warning "Backend API URL not found in stack outputs"
-        print_warning "You'll need to manually update src/config/api.ts with your API URL"
+        print_warning "Backend configuration not found in stack outputs"
+        print_warning "You'll need to manually create .env.local with your backend configuration"
+        print_warning "See .env.example for the required variables"
     fi
 else
     print_warning "Backend stack not found or not deployed"
-    print_warning "Update src/config/api.ts with your API URL when ready"
+    print_warning "Create .env.local based on .env.example when backend is ready"
 fi
 
 cd ..
@@ -206,10 +240,18 @@ if [ "$DEPLOY_BACKEND" = "true" ] || aws cloudformation describe-stacks --stack-
         --query "Stacks[0].Outputs[?OutputKey=='BackendApiUrl'].OutputValue" \
         --output text 2>/dev/null || echo "Not available")
 
+    USER_POOL_ID=$(aws cloudformation describe-stacks \
+        --stack-name "$BACKEND_STACK_NAME" \
+        --region "$AWS_REGION" \
+        --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" \
+        --output text 2>/dev/null || echo "Not available")
+
     echo "Configuration Summary:"
     echo "   Backend Stack: $BACKEND_STACK_NAME"
     echo "   AWS Region: $AWS_REGION"
     echo "   Backend API: $BACKEND_API_URL"
+    echo "   User Pool ID: $USER_POOL_ID"
+    echo "   Environment: frontend/.env.local"
 else
     echo "Configuration Summary:"
     echo "   Backend Stack: Not deployed"

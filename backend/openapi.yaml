@@ -13,6 +13,17 @@ x-amazon-apigateway-request-validators:
     validateRequestParameters: true
     validateRequestBody: true
 
+securityDefinitions:
+  CognitoAuthorizer:
+    type: apiKey
+    name: Authorization
+    in: header
+    x-amazon-apigateway-authtype: cognito_user_pools
+    x-amazon-apigateway-authorizer:
+      type: cognito_user_pools
+      providerARNs:
+        - Fn::GetAtt: [CognitoUserPool, Arn]
+
 x-amazon-apigateway-gateway-responses:
   BAD_REQUEST_BODY:
     statusCode: 400
@@ -34,6 +45,70 @@ x-amazon-apigateway-gateway-responses:
       gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
 
 paths:
+  /websocket/connect:
+    post:
+      summary: Generate presigned WebSocket URL
+      operationId: postWebSocketConnect
+      description: Generates an AWS SigV4 presigned WebSocket URL for authenticated browser clients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  description: Optional session ID (generated if not provided)
+      responses:
+        '200':
+          description: Presigned WebSocket URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSocketConnectResponse'
+        '401':
+          description: Unauthorized - Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketConnectFunction.Arn}/invocations
+
+  /websocket/info:
+    get:
+      summary: Get WebSocket connection information
+      operationId: getWebSocketInfo
+      description: Returns WebSocket endpoint URL and authentication type for real-time streaming
+      responses:
+        '200':
+          description: WebSocket connection info retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSocketInfo'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketInfoFunction.Arn}/invocations
+
   /query:
     post:
       summary: Send a request to the AI assistant
@@ -101,6 +176,45 @@ paths:
 
 components:
   schemas:
+    WebSocketConnectResponse:
+      type: object
+      properties:
+        wsUrl:
+          type: string
+          description: Presigned WebSocket URL with AWS SigV4 authentication
+          example: "wss://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/agent-xyz123/ws?X-Amz-Algorithm=..."
+        sessionId:
+          type: string
+          description: Session ID for this WebSocket connection
+        userId:
+          type: string
+          description: Authenticated user's ID from Cognito
+        expiresIn:
+          type: integer
+          description: URL expiration time in seconds
+          example: 300
+        message:
+          type: string
+          description: Additional information about the connection
+
+    WebSocketInfo:
+      type: object
+      properties:
+        wsUrl:
+          type: string
+          description: WebSocket endpoint URL
+          example: "wss://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/agent-xyz123/ws"
+        runtimeId:
+          type: string
+          description: AgentCore Runtime ID
+        authType:
+          type: string
+          description: Authentication method required
+          enum: ["JWT"]
+        message:
+          type: string
+          description: Additional connection instructions
+
     QueryRequest:
       type: object
       required:
