@@ -288,7 +288,7 @@ export class AuthService {
             return;
           }
           console.log('✅ Password changed successfully');
-          resolve(result);
+          resolve(result || 'Password changed successfully');
         });
       });
     });
