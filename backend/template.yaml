@@ -273,12 +273,9 @@ Resources:
       RoleArn: !GetAtt AgentCoreRole.Arn
       EnvironmentVariables:
         AGENTCORE_MEMORY_ID: !GetAtt AgentCoreShortTermMemory.MemoryId
-      # JWT Authorization Configuration
-      AuthorizerConfiguration:
-        CustomJWTAuthorizer:
-          DiscoveryUrl: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}/.well-known/openid-configuration"
-          AllowedClients:
-            - !Ref CognitoUserPoolClient
+      # SigV4 is the default auth when AuthorizerConfiguration is not set.
+      # WebSocket presigned URLs use SigV4 (browser WebSocket API cannot send custom headers for JWT/OAuth).
+      # User authentication is handled at API Gateway level via Cognito authorizer.
 
   AgentCoreRole:
     Type: AWS::IAM::Role

@@ -10,6 +10,10 @@
  * 2. This function generates AWS SigV4 presigned WebSocket URL
  * 3. Browser connects with presigned URL (no custom headers needed)
  * 4. User identity passed via custom header query parameter
+ *
+ * The runtime must use SigV4 auth (default when AuthorizerConfiguration is not set).
+ * From AWS docs: "Ensure your client uses the same authentication method (OAuth or SigV4)
+ * that the agent was configured with"
  */
 
 import { SignatureV4 } from '@aws-sdk/signature-v4';
@@ -19,8 +23,8 @@ import { defaultProvider } from '@aws-sdk/credential-provider-node';
 
 /**
  * Format a signed HttpRequest into a URL string.
- * Inline implementation to avoid dependency on @aws-sdk/util-format-url
- * which may not be available in the Lambda runtime.
+ * Matches the behavior of the AWS SDK's formatUrl - query param values
+ * are used as-is since SignatureV4.presign() already handles encoding.
  */
 function formatSignedUrl(request) {
     const { protocol, hostname, path, query } = request;
@@ -32,12 +36,13 @@ function formatSignedUrl(request) {
         for (const [key, value] of Object.entries(query)) {
             if (Array.isArray(value)) {
                 for (const v of value) {
-                    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
+                    // Use values as-is (matching AWS SDK formatUrl behavior)
+                    parts.push(`${key}=${v}`);
                 }
             } else if (value != null) {
-                parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+                parts.push(`${key}=${value}`);
             } else {
-                parts.push(encodeURIComponent(key));
+                parts.push(key);
             }
         }
         queryString = parts.join('&');
@@ -70,10 +75,13 @@ export const handler = async (event) => {
 
         console.log('Session ID:', sessionId);
 
-        // Construct WebSocket URL with URL-encoded ARN (per AWS docs)
-        const encodedArn = encodeURIComponent(runtimeArn);
+        // Construct WebSocket URL using the RAW ARN in the path
+        // Per the official AWS sample (websocket_helpers.py) and docs:
+        //   wss://bedrock-agentcore.<region>.amazonaws.com/runtimes/<agentRuntimeArn>/ws
+        // The ARN is placed directly in the path without URL-encoding.
+        // SigV4 signing handles canonical path encoding internally.
         const wsHost = `bedrock-agentcore.${region}.amazonaws.com`;
-        const wsPath = `/runtimes/${encodedArn}/ws`;
+        const wsPath = `/runtimes/${runtimeArn}/ws`;
 
         console.log('WebSocket host:', wsHost);
         console.log('WebSocket path:', wsPath);
@@ -83,16 +91,18 @@ export const handler = async (event) => {
         const credentials = await credentialsProvider();
 
         // Build query parameters
-        // qualifier=DEFAULT is required per the AWS sample
+        // qualifier=DEFAULT is included per the AWS sample
         const queryParams = {
             'qualifier': 'DEFAULT',
         };
 
-        // Pass session ID and user ID as custom header query params
-        // These are received as headers in the agent: x-amzn-bedrock-agentcore-runtime-custom-*
+        // Pass session ID as a query parameter
         if (sessionId) {
             queryParams['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'] = sessionId;
         }
+
+        // Pass user ID via custom header query param
+        // Received as header in agent: x-amzn-bedrock-agentcore-runtime-custom-user-id
         if (userId) {
             queryParams['X-Amzn-Bedrock-AgentCore-Runtime-Custom-User-Id'] = userId;
         }
@@ -124,7 +134,7 @@ export const handler = async (event) => {
             signingDate: new Date(),
         });
 
-        // Convert signed request to URL
+        // Convert signed request to URL, replacing https with wss for WebSocket
         const presignedHttpsUrl = formatSignedUrl(signedRequest);
         const presignedWsUrl = presignedHttpsUrl.replace('https://', 'wss://');
 
