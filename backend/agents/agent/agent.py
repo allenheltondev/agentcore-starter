@@ -79,6 +79,9 @@ async def websocket_handler(websocket, context):
     """
     await websocket.accept()
 
+    agent = None
+    session_id = None
+
     try:
         # Extract user identity from custom headers
         # These are passed as query parameters with prefix X-Amzn-Bedrock-AgentCore-Runtime-Custom-
@@ -91,86 +94,88 @@ async def websocket_handler(websocket, context):
         print(f"   Session (from context): {context.session_id}")
         print(f"   Headers: {list(headers.keys())[:10]}")  # Log first 10 header keys for debugging
 
-        # Receive initial request from client
-        data = await websocket.receive_json()
-        request = data.get("request", "")
-        session_id = data.get("session_id")
+        # Message loop — keep connection open for multi-turn conversation
+        while True:
+            data = await websocket.receive_json()
+            request = data.get("request", "")
+            msg_session_id = data.get("session_id")
 
-        # Validate input
-        if not request:
-            await websocket.send_json({
-                "type": "error",
-                "error": "Missing required field: request"
-            })
-            return
-
-        if not session_id:
-            await websocket.send_json({
-                "type": "error",
-                "error": "Missing required field: session_id"
-            })
-            return
-
-        print(f"📨 Request received - Session: {session_id}")
-        print(f"   Request: {request[:100]}{'...' if len(request) > 100 else ''}")
-
-        # Create agent with session manager using validated user_id
-        session_manager = create_session_manager(session_id, user_id)
-
-        agent = Agent(
-            model=BedrockModel(model_id=BEDROCK_MODEL_ID),
-            tools=[memory, use_llm],
-            system_prompt=SYSTEM_PROMPT,
-            session_manager=session_manager,
-        )
-
-        print(f"🤖 Agent initialized - Model: {BEDROCK_MODEL_ID}")
-
-        # Stream events back to client in real-time
-        async for event in agent.stream_async(request):
-            # Extract only JSON-serializable data from the event.
-            # stream_async() can yield events containing non-serializable objects
-            # (e.g. the Agent instance in completion events), so we pick out
-            # the fields the client actually needs.
-            client_event = None
-
-            if event.get("data"):
-                # Text chunk
-                client_event = {"data": event["data"]}
-                data_preview = event["data"][:50]
-                if len(event["data"]) > 50:
-                    data_preview += "..."
-                print(f"   📝 Text chunk: {data_preview}")
-
-            elif event.get("current_tool_use"):
-                tool = event["current_tool_use"]
-                tool_name = tool.get("name")
-                if tool_name:
-                    client_event = {"current_tool_use": {"name": tool_name, "tool_use_id": tool.get("tool_use_id")}}
-                    print(f"   🔧 Using tool: {tool_name}")
-
-            elif event.get("init_event_loop"):
-                client_event = {"init_event_loop": True}
-                print("   🔄 Event loop initialized")
-
-            elif event.get("complete"):
-                client_event = {"complete": True}
-                print("   ✅ Agent processing complete")
-
-            # Only send events that have useful client-facing data
-            if client_event is not None:
+            # Validate input
+            if not request:
                 await websocket.send_json({
-                    "type": "stream_event",
-                    "event": client_event
+                    "type": "error",
+                    "error": "Missing required field: request"
                 })
+                continue
 
-        # Send completion signal
-        await websocket.send_json({
-            "type": "complete",
-            "session_id": session_id
-        })
+            if not msg_session_id:
+                await websocket.send_json({
+                    "type": "error",
+                    "error": "Missing required field: session_id"
+                })
+                continue
 
-        print(f"✅ Stream complete for session: {session_id}")
+            print(f"📨 Request received - Session: {msg_session_id}")
+            print(f"   Request: {request[:100]}{'...' if len(request) > 100 else ''}")
+
+            # Create agent on first message, or recreate if session changes
+            if agent is None or msg_session_id != session_id:
+                session_id = msg_session_id
+                session_manager = create_session_manager(session_id, user_id)
+
+                agent = Agent(
+                    model=BedrockModel(model_id=BEDROCK_MODEL_ID),
+                    tools=[memory, use_llm],
+                    system_prompt=SYSTEM_PROMPT,
+                    session_manager=session_manager,
+                )
+                print(f"🤖 Agent initialized - Model: {BEDROCK_MODEL_ID}, Session: {session_id}")
+
+            # Stream events back to client in real-time
+            async for event in agent.stream_async(request):
+                # Extract only JSON-serializable data from the event.
+                # stream_async() can yield events containing non-serializable objects
+                # (e.g. the Agent instance in completion events), so we pick out
+                # the fields the client actually needs.
+                client_event = None
+
+                if event.get("data"):
+                    # Text chunk
+                    client_event = {"data": event["data"]}
+                    data_preview = event["data"][:50]
+                    if len(event["data"]) > 50:
+                        data_preview += "..."
+                    print(f"   📝 Text chunk: {data_preview}")
+
+                elif event.get("current_tool_use"):
+                    tool = event["current_tool_use"]
+                    tool_name = tool.get("name")
+                    if tool_name:
+                        client_event = {"current_tool_use": {"name": tool_name, "tool_use_id": tool.get("tool_use_id")}}
+                        print(f"   🔧 Using tool: {tool_name}")
+
+                elif event.get("init_event_loop"):
+                    client_event = {"init_event_loop": True}
+                    print("   🔄 Event loop initialized")
+
+                elif event.get("complete"):
+                    client_event = {"complete": True}
+                    print("   ✅ Agent processing complete")
+
+                # Only send events that have useful client-facing data
+                if client_event is not None:
+                    await websocket.send_json({
+                        "type": "stream_event",
+                        "event": client_event
+                    })
+
+            # Send completion signal for this turn
+            await websocket.send_json({
+                "type": "complete",
+                "session_id": session_id
+            })
+
+            print(f"✅ Stream complete for session: {session_id}")
 
     except json.JSONDecodeError as e:
         print(f"❌ JSON decode error: {e}")
@@ -183,23 +188,28 @@ async def websocket_handler(websocket, context):
             pass  # Connection may already be closed
 
     except Exception as e:
-        print(f"❌ Error in websocket_handler: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        error_str = str(e)
+        # WebSocket disconnect is expected when client closes the connection
+        if "disconnect" in error_str.lower() or "closed" in error_str.lower():
+            print(f"🔌 Client disconnected (session: {session_id})")
+        else:
+            print(f"❌ Error in websocket_handler: {error_str}")
+            import traceback
+            traceback.print_exc()
 
-        try:
-            await websocket.send_json({
-                "type": "error",
-                "error": str(e),
-                "message": "An error occurred while processing your request"
-            })
-        except:
-            pass  # Connection may already be closed
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "error": error_str,
+                    "message": "An error occurred while processing your request"
+                })
+            except:
+                pass  # Connection may already be closed
 
     finally:
         try:
             await websocket.close()
-            print("🔌 WebSocket connection closed")
+            print(f"🔌 WebSocket connection closed (session: {session_id})")
         except:
             pass
 
