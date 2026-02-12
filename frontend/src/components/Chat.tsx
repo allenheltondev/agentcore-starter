@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext'
 interface Message {
   id: string
   text: string
+  thinking?: string
   sender: 'user' | 'agent'
   timestamp: Date
   error?: boolean
@@ -26,6 +27,7 @@ function Chat() {
   const [isLoading, setIsLoading] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(urlSessionId || null)
   const [streamingText, setStreamingText] = useState('')
+  const [thinkingText, setThinkingText] = useState('')
   const [currentTool, setCurrentTool] = useState<string | null>(null)
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected')
 
@@ -96,16 +98,23 @@ function Chat() {
     const event = data.event
     if (!event) return
 
-    // Handle text streaming (most important!)
-    if (event.data) {
-      setStreamingText(prev => prev + event.data)
-    }
-
-    // Handle tool usage
+    // Handle tool usage — move accumulated text to thinking phase
     if (event.current_tool_use?.name) {
       const toolName = event.current_tool_use.name
       setCurrentTool(toolName)
+      // Move any text accumulated so far into thinking
+      setStreamingText(prev => {
+        if (prev) {
+          setThinkingText(t => t + prev)
+        }
+        return ''
+      })
       console.log(`🔧 Agent using tool: ${toolName}`)
+    }
+
+    // Handle text streaming
+    if (event.data) {
+      setStreamingText(prev => prev + event.data)
     }
 
     // Log lifecycle events
@@ -123,15 +132,17 @@ function Chat() {
     console.log('✅ Stream complete, finalizing message...')
 
     // Finalize the streaming message
-    if (streamingText) {
+    if (streamingText || thinkingText) {
       const agentMessage: Message = {
         id: Date.now().toString(),
         text: streamingText,
+        thinking: thinkingText || undefined,
         sender: 'agent',
         timestamp: new Date()
       }
       setMessages(prev => [...prev, agentMessage])
       setStreamingText('')
+      setThinkingText('')
     }
 
     setCurrentTool(null)
@@ -152,6 +163,7 @@ function Chat() {
 
     setMessages(prev => [...prev, errorMessage])
     setStreamingText('')
+    setThinkingText('')
     setCurrentTool(null)
     setIsLoading(false)
   }
@@ -185,6 +197,7 @@ function Chat() {
     setInputText('')
     setIsLoading(true)
     setStreamingText('')
+    setThinkingText('')
 
     // Send via WebSocket
     wsServiceRef.current.sendQuery(queryText, sessionId!, user?.sub)
@@ -253,6 +266,19 @@ function Chat() {
         {messages.map(message => (
           <div key={message.id} className={`message ${message.sender} ${message.error ? 'error' : ''}`}>
             <div className="message-content">
+              {message.thinking && (
+                <details className="thinking-section">
+                  <summary>Thinking</summary>
+                  <div className="thinking-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeSanitize]}
+                    >
+                      {message.thinking}
+                    </ReactMarkdown>
+                  </div>
+                </details>
+              )}
               <div className="message-text">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -269,20 +295,35 @@ function Chat() {
         ))}
 
         {/* Streaming message */}
-        {streamingText && (
+        {(streamingText || thinkingText) && (
           <div className="message agent streaming">
             <div className="message-content">
-              <div className="message-text">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeSanitize]}
-                >
-                  {streamingText}
-                </ReactMarkdown>
-              </div>
-              {currentTool && (
+              {thinkingText && (
+                <div className="thinking-section thinking-live">
+                  <div className="thinking-label">Thinking...</div>
+                  <div className="thinking-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeSanitize]}
+                    >
+                      {thinkingText}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              )}
+              {currentTool && !streamingText && (
                 <div className="tool-indicator">
-                  🔧 Using tool: <strong>{currentTool}</strong>
+                  🔧 Using: <strong>{currentTool}</strong>
+                </div>
+              )}
+              {streamingText && (
+                <div className="message-text">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeSanitize]}
+                  >
+                    {streamingText}
+                  </ReactMarkdown>
                 </div>
               )}
             </div>
