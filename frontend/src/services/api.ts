@@ -25,6 +25,14 @@ export interface WebSocketInfo {
   message?: string;
 }
 
+export interface PresignedWebSocketUrl {
+  wsUrl: string;
+  sessionId: string;
+  userId: string;
+  expiresIn: number;
+  message: string;
+}
+
 export class ApiService {
   private readonly baseUrl: string;
 
@@ -55,6 +63,40 @@ export class ApiService {
       return data;
     } catch (error) {
       console.error('Error getting WebSocket info:', error);
+      throw error;
+    }
+  }
+
+  async getPresignedWebSocketUrl(sessionId: string, accessToken: string): Promise<PresignedWebSocketUrl> {
+    const url = `${this.baseUrl}/websocket/connect`;
+
+    console.log('🔐 Requesting presigned WebSocket URL');
+    console.log('   Session ID:', sessionId);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ sessionId }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Failed to get presigned URL:', response.status, errorText);
+        throw new Error(`Failed to get presigned WebSocket URL: ${response.status}`);
+      }
+
+      const data: PresignedWebSocketUrl = await response.json();
+      console.log('✅ Presigned WebSocket URL obtained');
+      console.log('   Expires in:', data.expiresIn, 'seconds');
+      console.log('   User ID:', data.userId);
+
+      return data;
+    } catch (error) {
+      console.error('❌ Error getting presigned WebSocket URL:', error);
       throw error;
     }
   }

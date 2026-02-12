@@ -70,23 +70,25 @@ async def websocket_handler(websocket, context):
     """
     WebSocket handler for real-time streaming agent responses.
 
-    JWT authentication is handled by AgentCore Runtime before this handler is called.
-    User identity information is available in the context.
+    AWS SigV4 authentication is handled by AgentCore Runtime before this handler is called.
+    User identity is passed via custom headers in the WebSocket connection.
 
     Args:
         websocket: WebSocket connection object
-        context: Request context containing user identity from validated JWT
+        context: Request context containing headers and request information
     """
     await websocket.accept()
 
     try:
-        # Extract user identity from JWT context (already validated by AgentCore Runtime)
-        user_id = context.get("user_id") or context.get("sub")  # JWT 'sub' claim
-        client_id = context.get("client_id")  # JWT 'client_id' claim
+        # Extract user identity from custom headers
+        # These are passed as query parameters with prefix X-Amzn-Bedrock-AgentCore-Runtime-Custom-
+        # and received as lowercase headers
+        headers = context.get("headers", {})
+        user_id = headers.get("x-amzn-bedrock-agentcore-runtime-custom-user-id")
 
         print(f"✅ WebSocket connection established")
         print(f"   User ID: {user_id}")
-        print(f"   Client ID: {client_id}")
+        print(f"   Headers: {list(headers.keys())[:10]}")  # Log first 10 header keys for debugging
 
         # Receive initial request from client
         data = await websocket.receive_json()

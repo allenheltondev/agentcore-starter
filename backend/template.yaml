@@ -126,6 +126,55 @@ Resources:
         EntryPoints:
           - websocket-info.js
 
+  WebSocketConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/
+      Handler: websocket-connect.handler
+      Description: Generates AWS SigV4 presigned WebSocket URL for authenticated browser clients
+      Runtime: nodejs24.x
+      Timeout: 30
+      Environment:
+        Variables:
+          AGENT_RUNTIME_ARN: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/${AgentCoreRuntime}"
+      Events:
+        PostWebSocketConnect:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BackendApi
+            Path: /websocket/connect
+            Method: POST
+            Auth:
+              Authorizer: CognitoAuthorizer
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream
+              Resource: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*"
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*"
+            - Effect: Allow
+              Action:
+                - xray:PutTraceSegments
+                - xray:PutTelemetryRecords
+                - xray:GetSamplingRules
+                - xray:GetSamplingTargets
+              Resource: "*"
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: false
+        Target: es2020
+        EntryPoints:
+          - websocket-connect.js
+        External:
+          - '@aws-sdk/*'
+
   ApiGatewayStepFunctionsRole:
     Type: AWS::IAM::Role
     Properties:

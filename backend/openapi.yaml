@@ -13,6 +13,17 @@ x-amazon-apigateway-request-validators:
     validateRequestParameters: true
     validateRequestBody: true
 
+securityDefinitions:
+  CognitoAuthorizer:
+    type: apiKey
+    name: Authorization
+    in: header
+    x-amazon-apigateway-authtype: cognito_user_pools
+    x-amazon-apigateway-authorizer:
+      type: cognito_user_pools
+      providerARNs:
+        - Fn::GetAtt: [CognitoUserPool, Arn]
+
 x-amazon-apigateway-gateway-responses:
   BAD_REQUEST_BODY:
     statusCode: 400
@@ -34,6 +45,57 @@ x-amazon-apigateway-gateway-responses:
       gatewayresponse.header.Access-Control-Allow-Methods: "'GET,POST,OPTIONS'"
 
 paths:
+  /websocket/connect:
+    post:
+      summary: Generate presigned WebSocket URL
+      operationId: postWebSocketConnect
+      description: Generates an AWS SigV4 presigned WebSocket URL for authenticated browser clients
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId:
+                  type: string
+                  description: Optional session ID (generated if not provided)
+      responses:
+        '200':
+          description: Presigned WebSocket URL generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSocketConnectResponse'
+        '401':
+          description: Unauthorized - Invalid or missing authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketConnectFunction.Arn}/invocations
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+        responses:
+          default:
+            statusCode: 200
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+
   /websocket/info:
     get:
       summary: Get WebSocket connection information
@@ -57,21 +119,6 @@ paths:
         httpMethod: POST
         uri:
           Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketInfoFunction.Arn}/invocations
-    options:
-      summary: CORS preflight for WebSocket info
-      responses:
-        '200':
-          description: CORS preflight response
-          headers:
-            Access-Control-Allow-Origin:
-              schema:
-                type: string
-            Access-Control-Allow-Methods:
-              schema:
-                type: string
-            Access-Control-Allow-Headers:
-              schema:
-                type: string
       x-amazon-apigateway-integration:
         type: mock
         requestTemplates:
@@ -151,6 +198,27 @@ paths:
 
 components:
   schemas:
+    WebSocketConnectResponse:
+      type: object
+      properties:
+        wsUrl:
+          type: string
+          description: Presigned WebSocket URL with AWS SigV4 authentication
+          example: "wss://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/agent-xyz123/ws?X-Amz-Algorithm=..."
+        sessionId:
+          type: string
+          description: Session ID for this WebSocket connection
+        userId:
+          type: string
+          description: Authenticated user's ID from Cognito
+        expiresIn:
+          type: integer
+          description: URL expiration time in seconds
+          example: 300
+        message:
+          type: string
+          description: Additional information about the connection
+
     WebSocketInfo:
       type: object
       properties:

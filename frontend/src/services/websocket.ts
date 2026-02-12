@@ -27,43 +27,40 @@ export class WebSocketService {
   private authenticationCompleted = false;
 
   /**
-   * Connect to WebSocket with JWT authentication
+   * Connect to WebSocket using AWS SigV4 presigned URL
    */
   async connect(sessionId: string, userId?: string): Promise<void> {
     try {
-      // Step 1: Get WebSocket URL from backend
-      const { wsUrl } = await apiService.getWebSocketInfo();
-      console.log('📡 WebSocket URL obtained:', wsUrl);
-
-      // Step 2: Get JWT access token
+      // Step 1: Get JWT access token for API authentication
       const accessToken = await authService.getAccessToken();
       if (!accessToken) {
         throw new Error('Not authenticated - no access token');
       }
 
-      console.log('🔑 JWT token obtained');
-      console.log('   Token length:', accessToken.length);
-      console.log('   Token prefix:', accessToken.substring(0, 20) + '...');
+      console.log('🔑 JWT token obtained for API auth');
+
+      // Step 2: Request presigned WebSocket URL from backend
+      // The backend validates the JWT token and generates an AWS SigV4 presigned URL
+      const presignedData = await apiService.getPresignedWebSocketUrl(sessionId, accessToken);
+      console.log('📡 Presigned WebSocket URL obtained');
+      console.log('   Session ID:', presignedData.sessionId);
+      console.log('   User ID:', presignedData.userId);
+      console.log('   Expires in:', presignedData.expiresIn, 'seconds');
 
       return new Promise((resolve, reject) => {
         try {
-          // Connect to WebSocket with JWT token in URL
-          // AgentCore Runtime with JWT authorizer expects token as query parameter
-          const wsUrlWithAuth = `${wsUrl}?authorization=${encodeURIComponent('Bearer ' + accessToken)}`;
-          console.log('🔗 WebSocket URL:', wsUrl);
-          console.log('   With auth query param added (token hidden)');
-
-          this.ws = new WebSocket(wsUrlWithAuth);
+          // Connect to WebSocket using presigned URL (includes AWS SigV4 auth in query params)
+          this.ws = new WebSocket(presignedData.wsUrl);
 
           this.ws.onopen = () => {
-            console.log('✅ WebSocket connection established with JWT authentication');
+            console.log('✅ WebSocket connection established');
+            console.log('   AWS SigV4 authentication successful');
+            console.log('   Ready to send queries');
 
-            // With JWT in URL, authentication is validated at connection time by AgentCore Runtime
-            // No need to send auth message - connection establishment means auth succeeded
+            // Authentication is validated at connection time via presigned URL
             this.authenticationCompleted = true;
             this.reconnectAttempts = 0;
 
-            console.log('🔐 JWT authentication successful, ready to send queries');
             resolve();
           };
 
