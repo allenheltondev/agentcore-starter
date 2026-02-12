@@ -85,30 +85,6 @@ paths:
         uri:
           Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketConnectFunction.Arn}/invocations
 
-  /websocket/info:
-    get:
-      summary: Get WebSocket connection information
-      operationId: getWebSocketInfo
-      description: Returns WebSocket endpoint URL and authentication type for real-time streaming
-      responses:
-        '200':
-          description: WebSocket connection info retrieved successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WebSocketInfo'
-        '500':
-          description: Internal Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-      x-amazon-apigateway-integration:
-        type: aws_proxy
-        httpMethod: POST
-        uri:
-          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WebSocketInfoFunction.Arn}/invocations
-
   /query:
     post:
       summary: Send a request to the AI assistant
@@ -196,24 +172,6 @@ components:
         message:
           type: string
           description: Additional information about the connection
-
-    WebSocketInfo:
-      type: object
-      properties:
-        wsUrl:
-          type: string
-          description: WebSocket endpoint URL
-          example: "wss://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/agent-xyz123/ws"
-        runtimeId:
-          type: string
-          description: AgentCore Runtime ID
-        authType:
-          type: string
-          description: Authentication method required
-          enum: ["JWT"]
-        message:
-          type: string
-          description: Additional connection instructions
 
     QueryRequest:
       type: object

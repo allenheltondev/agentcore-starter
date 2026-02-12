@@ -42,7 +42,6 @@ backend/
     requirements.txt      # Python dependencies
   functions/              # Lambda functions (Node.js)
     websocket-connect.js  # SigV4 presigned URL generation
-    websocket-info.js     # WebSocket endpoint info
     agentcore-invoke.js   # HTTP invocation (legacy)
   workflows/              # Step Functions state machine
   template.yaml           # SAM template (backend infra)

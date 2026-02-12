@@ -18,13 +18,6 @@ export interface QueryErrorResponse {
   message: string;
 }
 
-export interface WebSocketInfo {
-  wsUrl: string;
-  runtimeId: string;
-  authType: string;
-  message?: string;
-}
-
 export interface PresignedWebSocketUrl {
   wsUrl: string;
   sessionId: string;
@@ -44,34 +37,8 @@ export class ApiService {
     return getUserId();
   }
 
-  async getWebSocketInfo(): Promise<WebSocketInfo> {
-    const url = `${this.baseUrl}/websocket/info`;
-
-    try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to get WebSocket info: ${response.status}`);
-      }
-
-      const data: WebSocketInfo = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error getting WebSocket info:', error);
-      throw error;
-    }
-  }
-
   async getPresignedWebSocketUrl(sessionId: string, accessToken: string): Promise<PresignedWebSocketUrl> {
     const url = `${this.baseUrl}/websocket/connect`;
-
-    console.log('🔐 Requesting presigned WebSocket URL');
-    console.log('   Session ID:', sessionId);
 
     try {
       const response = await fetch(url, {
@@ -85,18 +52,13 @@ export class ApiService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Failed to get presigned URL:', response.status, errorText);
+        console.error('Failed to get presigned URL:', response.status, errorText);
         throw new Error(`Failed to get presigned WebSocket URL: ${response.status}`);
       }
 
-      const data: PresignedWebSocketUrl = await response.json();
-      console.log('✅ Presigned WebSocket URL obtained');
-      console.log('   Expires in:', data.expiresIn, 'seconds');
-      console.log('   User ID:', data.userId);
-
-      return data;
+      return await response.json() as PresignedWebSocketUrl;
     } catch (error) {
-      console.error('❌ Error getting presigned WebSocket URL:', error);
+      console.error('Error getting presigned WebSocket URL:', error);
       throw error;
     }
   }
