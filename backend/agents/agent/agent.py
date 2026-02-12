@@ -133,6 +133,14 @@ async def websocket_handler(websocket, context):
                 print(f"🤖 Agent initialized - Model: {BEDROCK_MODEL_ID}, Session: {session_id}")
                 print(f"   Agent ID: {agent.agent_id}, Messages loaded: {len(agent.messages)}")
 
+            # Log conversation state before processing
+            print(f"   📊 Messages before call: {len(agent.messages)}")
+            for i, msg in enumerate(agent.messages):
+                role = msg.get("role", "unknown")
+                content = msg.get("content", [])
+                content_preview = str(content)[:80] if content else "(empty)"
+                print(f"      [{i}] {role}: {content_preview}")
+
             # Stream events back to client in real-time
             async for event in agent.stream_async(request):
                 # Extract only JSON-serializable data from the event.
@@ -178,6 +186,7 @@ async def websocket_handler(websocket, context):
             })
 
             print(f"✅ Stream complete for session: {session_id}")
+            print(f"   📊 Messages after call: {len(agent.messages)}")
 
     except json.JSONDecodeError as e:
         print(f"❌ JSON decode error: {e}")
