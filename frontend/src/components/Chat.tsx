@@ -136,7 +136,7 @@ function Chat() {
       const agentMessage: Message = {
         id: Date.now().toString(),
         text: streamingText,
-        thinking: thinkingText || undefined,
+        ...(thinkingText ? { thinking: thinkingText } : {}),
         sender: 'agent',
         timestamp: new Date()
       }
