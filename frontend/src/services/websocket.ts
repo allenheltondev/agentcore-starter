@@ -41,14 +41,17 @@ export class WebSocketService {
         throw new Error('Not authenticated - no access token');
       }
 
-      console.log('🔑 JWT token obtained, connecting to WebSocket...');
+      console.log('🔑 JWT token obtained');
+      console.log('   Token length:', accessToken.length);
+      console.log('   Token prefix:', accessToken.substring(0, 20) + '...');
 
       return new Promise((resolve, reject) => {
         try {
           // Connect to WebSocket with JWT token in URL
           // AgentCore Runtime with JWT authorizer expects token as query parameter
           const wsUrlWithAuth = `${wsUrl}?authorization=${encodeURIComponent('Bearer ' + accessToken)}`;
-          console.log('🔗 Connecting to:', wsUrl.replace(/\/\/.*?\./, '//***.'));
+          console.log('🔗 WebSocket URL:', wsUrl);
+          console.log('   With auth query param added (token hidden)');
 
           this.ws = new WebSocket(wsUrlWithAuth);
 
