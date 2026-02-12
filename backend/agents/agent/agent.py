@@ -82,12 +82,13 @@ async def websocket_handler(websocket, context):
     try:
         # Extract user identity from custom headers
         # These are passed as query parameters with prefix X-Amzn-Bedrock-AgentCore-Runtime-Custom-
-        # and received as lowercase headers
-        headers = context.get("headers", {})
+        # and received as lowercase headers in context.request_headers
+        headers = context.request_headers or {}
         user_id = headers.get("x-amzn-bedrock-agentcore-runtime-custom-user-id")
 
         print(f"✅ WebSocket connection established")
         print(f"   User ID: {user_id}")
+        print(f"   Session (from context): {context.session_id}")
         print(f"   Headers: {list(headers.keys())[:10]}")  # Log first 10 header keys for debugging
 
         # Receive initial request from client
@@ -127,30 +128,41 @@ async def websocket_handler(websocket, context):
 
         # Stream events back to client in real-time
         async for event in agent.stream_async(request):
-            # Transform event into structured message for client
-            message = {
-                "type": "stream_event",
-                "event": event
-            }
+            # Extract only JSON-serializable data from the event.
+            # stream_async() can yield events containing non-serializable objects
+            # (e.g. the Agent instance in completion events), so we pick out
+            # the fields the client actually needs.
+            client_event = None
 
-            # Send event to client
-            await websocket.send_json(message)
-
-            # Log important events for debugging
-            if event.get("init_event_loop"):
-                print("   🔄 Event loop initialized")
-            elif event.get("current_tool_use"):
-                tool_name = event["current_tool_use"].get("name")
-                if tool_name:
-                    print(f"   🔧 Using tool: {tool_name}")
-            elif event.get("complete"):
-                print("   ✅ Agent processing complete")
-            elif event.get("data"):
-                # Log text chunks (truncated)
+            if event.get("data"):
+                # Text chunk
+                client_event = {"data": event["data"]}
                 data_preview = event["data"][:50]
                 if len(event["data"]) > 50:
                     data_preview += "..."
                 print(f"   📝 Text chunk: {data_preview}")
+
+            elif event.get("current_tool_use"):
+                tool = event["current_tool_use"]
+                tool_name = tool.get("name")
+                if tool_name:
+                    client_event = {"current_tool_use": {"name": tool_name, "tool_use_id": tool.get("tool_use_id")}}
+                    print(f"   🔧 Using tool: {tool_name}")
+
+            elif event.get("init_event_loop"):
+                client_event = {"init_event_loop": True}
+                print("   🔄 Event loop initialized")
+
+            elif event.get("complete"):
+                client_event = {"complete": True}
+                print("   ✅ Agent processing complete")
+
+            # Only send events that have useful client-facing data
+            if client_event is not None:
+                await websocket.send_json({
+                    "type": "stream_event",
+                    "event": client_event
+                })
 
         # Send completion signal
         await websocket.send_json({
