@@ -89,7 +89,7 @@ async def websocket_handler(websocket, context):
         headers = context.request_headers or {}
         user_id = headers.get("x-amzn-bedrock-agentcore-runtime-custom-user-id")
 
-        print(f"✅ WebSocket connection established")
+        print("✅ WebSocket connection established")
         print(f"   User ID: {user_id}")
         print(f"   Session (from context): {context.session_id}")
         print(f"   Headers: {list(headers.keys())[:10]}")  # Log first 10 header keys for debugging
@@ -124,12 +124,14 @@ async def websocket_handler(websocket, context):
                 session_manager = create_session_manager(session_id, user_id)
 
                 agent = Agent(
+                    agent_id="assistant",
                     model=BedrockModel(model_id=BEDROCK_MODEL_ID),
                     tools=[memory, use_llm],
                     system_prompt=SYSTEM_PROMPT,
                     session_manager=session_manager,
                 )
                 print(f"🤖 Agent initialized - Model: {BEDROCK_MODEL_ID}, Session: {session_id}")
+                print(f"   Agent ID: {agent.agent_id}, Messages loaded: {len(agent.messages)}")
 
             # Stream events back to client in real-time
             async for event in agent.stream_async(request):
@@ -240,6 +242,7 @@ def invoke(payload):
         session_manager = create_session_manager(runtime_session_id, user_id)
 
         agent = Agent(
+            agent_id="assistant",
             model=BedrockModel(model_id=BEDROCK_MODEL_ID),
             tools=tools,
             system_prompt=SYSTEM_PROMPT,
@@ -247,6 +250,7 @@ def invoke(payload):
         )
 
         print(f"Agent initialized with model: {BEDROCK_MODEL_ID}, session: {runtime_session_id}")
+        print(f"Messages loaded from memory: {len(agent.messages)}")
 
         result = agent(request)
         response_text = str(result)

@@ -273,9 +273,6 @@ Resources:
       RoleArn: !GetAtt AgentCoreRole.Arn
       EnvironmentVariables:
         AGENTCORE_MEMORY_ID: !GetAtt AgentCoreShortTermMemory.MemoryId
-      # SigV4 is the default auth when AuthorizerConfiguration is not set.
-      # WebSocket presigned URLs use SigV4 (browser WebSocket API cannot send custom headers for JWT/OAuth).
-      # User authentication is handled at API Gateway level via Cognito authorizer.
 
   AgentCoreRole:
     Type: AWS::IAM::Role
