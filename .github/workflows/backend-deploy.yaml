@@ -15,7 +15,6 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  STACK_NAME: agentcore-chatbot-backend
   NODE_VERSION: '24'
 
 permissions:
@@ -31,14 +30,24 @@ jobs:
       env_hash: ${{ steps.prepare-parameters.outputs.env_hash }}
       env_name: ${{ steps.prepare-parameters.outputs.env_name }}
       backend_stack_name: ${{ steps.prepare-parameters.outputs.backend_stack_name }}
+      project_name: ${{ steps.config.outputs.project_name }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read project config
+        id: config
+        run: |
+          PROJECT_NAME=$(grep 'project_name:' project.yaml | awk '{print $2}')
+          echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+
       - name: Prepare parameters
         id: prepare-parameters
         run: |
           ENV_DESCRIPTOR="${{ github.actor }}"
           ENV_HASH=$(echo -n "$ENV_DESCRIPTOR" | sha1sum | cut -c1-6)
           ENV_NAME="${{ github.actor }}"
-          BACKEND_STACK_NAME="${{ env.STACK_NAME }}-$ENV_DESCRIPTOR"
+          BACKEND_STACK_NAME="${{ steps.config.outputs.project_name }}-backend-$ENV_DESCRIPTOR"
 
           echo "env_descriptor=$ENV_DESCRIPTOR" >> $GITHUB_OUTPUT
           echo "env_hash=$ENV_HASH" >> $GITHUB_OUTPUT
@@ -144,6 +153,7 @@ jobs:
           ARTIFACTS_BUCKET_NAME: ${{ secrets.ARTIFACTS_BUCKET_NAME }}
           AGENT_DIRECT_DEPLOY_KEY: ${{ needs.collect-agent-artifacts.outputs.agent-key }}
           AWS_REGION: ${{ env.AWS_REGION }}
+          PROJECT_NAME: ${{ needs.prepare-deployment.outputs.project_name }}
 
         run: |
           envsubst < samconfig.yaml.template > samconfig.yaml

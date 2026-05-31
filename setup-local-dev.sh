@@ -1,16 +1,19 @@
 #!/bin/bash
 
-# AgentCore Chatbot - Local Development Setup Script
+# AgentCore Starter - Local Development Setup Script
 # This script helps you set up local development environment quickly
 
 set -e
 
-echo "AgentCore Chatbot - Local Development Setup"
+# Read project configuration
+PROJECT_NAME=$(grep 'project_name:' project.yaml | awk '{print $2}')
+
+echo "AgentCore Starter - Local Development Setup"
 echo "============================================"
 echo ""
 
 # Default values
-BACKEND_STACK_NAME="${BACKEND_STACK_NAME:-agentcore-chatbot-backend-dev}"
+BACKEND_STACK_NAME="${BACKEND_STACK_NAME:-${PROJECT_NAME}-backend-dev}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 SKIP_BACKEND_DEPLOY="${SKIP_BACKEND_DEPLOY:-false}"
 
@@ -112,6 +115,7 @@ if [ "$DEPLOY_BACKEND" = "true" ]; then
     print_step "Creating SAM configuration..."
     export STACK_NAME="$BACKEND_STACK_NAME"
     export AWS_REGION="$AWS_REGION"
+    export PROJECT_NAME="$PROJECT_NAME"
     envsubst < samconfig.yaml.template > samconfig.yaml
 
     print_success "SAM configuration created"
