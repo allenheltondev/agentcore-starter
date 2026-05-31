@@ -4,9 +4,18 @@
 
 set -e
 
+# Read project configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_NAME=$(grep 'project_name:' "$PROJECT_ROOT/project.yaml" | awk '{print $2}' | tr -d '"'"'")
+if [ -z "$PROJECT_NAME" ]; then
+  echo "Error: could not read project_name from project.yaml" >&2
+  exit 1
+fi
+
 # Default values
-BACKEND_STACK_NAME="${BACKEND_STACK_NAME:-agentcore-chatbot-backend-andmored}"
-FRONTEND_STACK_NAME="${FRONTEND_STACK_NAME:-agentcore-chatbot-frontend-andmored}"
+BACKEND_STACK_NAME="${BACKEND_STACK_NAME:-${PROJECT_NAME}-backend-dev}"
+FRONTEND_STACK_NAME="${FRONTEND_STACK_NAME:-${PROJECT_NAME}-frontend-dev}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 
 echo "Fetching configuration from backend stack: $BACKEND_STACK_NAME"
