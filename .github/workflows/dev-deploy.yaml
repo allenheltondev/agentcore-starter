@@ -41,7 +41,11 @@ jobs:
       - name: Read project config
         id: config
         run: |
-          PROJECT_NAME=$(grep 'project_name:' project.yaml | awk '{print $2}')
+          PROJECT_NAME=$(grep 'project_name:' project.yaml | awk '{print $2}' | tr -d '"'"'")
+          if [ -z "$PROJECT_NAME" ]; then
+            echo "::error::Could not read project_name from project.yaml"
+            exit 1
+          fi
           echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
 
       - name: Prepare parameters

@@ -6,7 +6,11 @@
 set -e
 
 # Read project configuration
-PROJECT_NAME=$(grep 'project_name:' project.yaml | awk '{print $2}')
+PROJECT_NAME=$(grep 'project_name:' project.yaml | awk '{print $2}' | tr -d '"'"'")
+if [ -z "$PROJECT_NAME" ]; then
+  echo "Error: could not read project_name from project.yaml. Make sure the file exists and contains 'project_name: your-project-name'." >&2
+  exit 1
+fi
 
 echo "AgentCore Starter - Local Development Setup"
 echo "============================================"
