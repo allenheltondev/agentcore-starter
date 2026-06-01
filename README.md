@@ -2,6 +2,20 @@
 
 AI-powered chatbot built on AWS Bedrock AgentCore Runtime with real-time WebSocket streaming and conversation memory.
 
+## Getting Started with this Template
+
+1. Click **"Use this template"** on GitHub to create your own repository.
+2. Edit `project.yaml` in the repo root and set your project name:
+   ```yaml
+   project_name: my-awesome-chatbot
+   ```
+3. Everything else derives automatically from that single value:
+   - CloudFormation stack names (e.g. `my-awesome-chatbot-backend-dev`, `my-awesome-chatbot-frontend-dev`)
+   - S3 artifact prefixes in SAM configuration
+   - Local development script defaults
+
+No other configuration files need to be changed when starting a new project from this template.
+
 ## Architecture
 
 ```

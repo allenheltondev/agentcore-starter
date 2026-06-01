@@ -10,6 +10,14 @@ if [ ! -f "samconfig.yaml.template" ]; then
     exit 1
 fi
 
+# Read project name from config if PROJECT_NAME not already set
+if [ -z "$PROJECT_NAME" ]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  PROJECT_NAME=$(grep 'project_name:' "$PROJECT_ROOT/project.yaml" | awk '{print $2}' | tr -d '"'"'")
+fi
+export PROJECT_NAME
+
 # Check required environment variables
 required_vars=("STACK_NAME" "AWS_REGION")
 missing_vars=()
@@ -25,7 +33,7 @@ if [ ${#missing_vars[@]} -ne 0 ]; then
     printf '%s\n' "${missing_vars[@]}"
     echo ""
     echo "Please set the following variables:"
-    echo "export STACK_NAME=\"agentcore-chatbot-frontend\""
+    echo "export STACK_NAME=\"your-project-frontend\""
     echo "export AWS_REGION=\"us-east-1\""
     exit 1
 fi

@@ -1,8 +1,14 @@
-name: Deploy Dev Environment
-run-name: Deploy Dev Environment - Auto Deploy
+name: Deploy
+run-name: Deploy - ${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || 'Main' }}
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - '.github/workflows/dev-deploy.yaml'
+  pull_request:
     branches: [main]
     paths:
       - 'backend/**'
@@ -16,8 +22,6 @@ concurrency:
 
 env:
   AWS_REGION: us-east-1
-  BACKEND_STACK_NAME: agentcore-chatbot-backend
-  FRONTEND_STACK_NAME: agentcore-chatbot-frontend
   NODE_VERSION: '24'
   ENV_DESCRIPTOR: dev
 
@@ -35,21 +39,38 @@ jobs:
       env_name: ${{ steps.prepare-parameters.outputs.env_name }}
       backend_stack_name: ${{ steps.prepare-parameters.outputs.backend_stack_name }}
       frontend_stack_name: ${{ steps.prepare-parameters.outputs.frontend_stack_name }}
+      project_name: ${{ steps.config.outputs.project_name }}
+      resource_prefix: ${{ steps.prepare-parameters.outputs.resource_prefix }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read project config
+        id: config
+        run: |
+          PROJECT_NAME=$(grep 'project_name:' project.yaml | awk '{print $2}' | tr -d '"'"'")
+          if [ -z "$PROJECT_NAME" ]; then
+            echo "::error::Could not read project_name from project.yaml"
+            exit 1
+          fi
+          echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
+
       - name: Prepare parameters
         id: prepare-parameters
         run: |
           ENV_DESCRIPTOR="dev"
           ENV_HASH=$(echo -n "$ENV_DESCRIPTOR" | sha1sum | cut -c1-6)
           ENV_NAME="dev"
-          BACKEND_STACK_NAME="${{ env.BACKEND_STACK_NAME }}-$ENV_DESCRIPTOR"
-          FRONTEND_STACK_NAME="${{ env.FRONTEND_STACK_NAME }}-$ENV_DESCRIPTOR"
+          BACKEND_STACK_NAME="${{ steps.config.outputs.project_name }}-backend-$ENV_DESCRIPTOR"
+          FRONTEND_STACK_NAME="${{ steps.config.outputs.project_name }}-frontend-$ENV_DESCRIPTOR"
+          RESOURCE_PREFIX=$(echo "${{ steps.config.outputs.project_name }}" | tr '-' '_')_${ENV_HASH}
 
           echo "env_descriptor=$ENV_DESCRIPTOR" >> $GITHUB_OUTPUT
           echo "env_hash=$ENV_HASH" >> $GITHUB_OUTPUT
           echo "env_name=$ENV_NAME" >> $GITHUB_OUTPUT
           echo "backend_stack_name=$BACKEND_STACK_NAME" >> $GITHUB_OUTPUT
           echo "frontend_stack_name=$FRONTEND_STACK_NAME" >> $GITHUB_OUTPUT
+          echo "resource_prefix=$RESOURCE_PREFIX" >> $GITHUB_OUTPUT
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
           # Dev Environment Deployment
@@ -152,6 +173,8 @@ jobs:
           ARTIFACTS_BUCKET_NAME: ${{ secrets.ARTIFACTS_BUCKET_NAME }}
           AGENT_DIRECT_DEPLOY_KEY: ${{ needs.collect-agent-artifacts.outputs.agent-key }}
           AWS_REGION: ${{ env.AWS_REGION }}
+          PROJECT_NAME: ${{ needs.prepare-deployment.outputs.project_name }}
+          RESOURCE_PREFIX: ${{ needs.prepare-deployment.outputs.resource_prefix }}
 
         run: |
           envsubst < samconfig.yaml.template > samconfig.yaml
@@ -217,6 +240,7 @@ jobs:
         env:
           STACK_NAME: ${{ needs.prepare-deployment.outputs.frontend_stack_name }}
           AWS_REGION: ${{ env.AWS_REGION }}
+          PROJECT_NAME: ${{ needs.prepare-deployment.outputs.project_name }}
         run: |
           envsubst < samconfig.yaml.template > samconfig.yaml
           echo "Generated samconfig.yaml for dev frontend:"
