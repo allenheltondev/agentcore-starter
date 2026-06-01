@@ -160,12 +160,6 @@ Resources:
                   - states:StartSyncExecution
                 Resource: !Ref AgentStateMachine
 
-  AgentStateMachineLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/stepfunctions/AgentStateMachine-${EnvironmentHash}"
-      RetentionInDays: 30
-
   AgentStateMachine:
     Type: AWS::Serverless::StateMachine
     Properties:
@@ -175,12 +169,6 @@ Resources:
         AgentCoreInvokeFunctionArn: !GetAtt AgentCoreInvokeFunction.Arn
       Tracing:
         Enabled: true
-      Logging:
-        Level: ALL
-        IncludeExecutionData: true
-        Destinations:
-          - CloudWatchLogsLogGroup:
-              LogGroupArn: !GetAtt AgentStateMachineLogGroup.Arn
       Policies:
         - Statement:
             - Effect: Allow
