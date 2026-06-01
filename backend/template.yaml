@@ -16,10 +16,6 @@ Parameters:
     Type: String
     Description: A hash of the current environment
 
-  ProjectName:
-    Type: String
-    Description: Project name from project.yaml, used to ensure unique resource names
-
 Globals:
   Function:
     Timeout: 30
@@ -213,7 +209,7 @@ Resources:
   AgentCoreShortTermMemory:
     Type: AWS::BedrockAgentCore::Memory
     Properties:
-      Name: !Sub '${ProjectName}-memory-${EnvironmentHash}'
+      Name: !Sub '${AWS::StackName}-memory'
       Description: Short-term memory for agent conversation persistence
       MemoryExecutionRoleArn: !GetAtt AgentCoreRole.Arn
       EventExpiryDuration: 30
@@ -230,7 +226,7 @@ Resources:
           EntryPoint:
             - agent.py
           Runtime: PYTHON_3_13
-      AgentRuntimeName: !Sub '${ProjectName}-agent-${EnvironmentHash}'
+      AgentRuntimeName: !Sub '${AWS::StackName}-agent'
       NetworkConfiguration:
         NetworkMode: PUBLIC
       RoleArn: !GetAtt AgentCoreRole.Arn
@@ -360,7 +356,6 @@ Resources:
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: !Sub '${ProjectName}-users-${EnvironmentHash}'
       UsernameAttributes:
         - email
       AutoVerifiedAttributes:
@@ -390,7 +385,6 @@ Resources:
     Type: AWS::Cognito::UserPoolClient
     Properties:
       UserPoolId: !Ref CognitoUserPool
-      ClientName: !Sub '${ProjectName}-client-${EnvironmentHash}'
       GenerateSecret: false
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
