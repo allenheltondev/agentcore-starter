@@ -149,18 +149,23 @@ function Chat() {
 
   // Handle completion of streaming
   const handleComplete = () => {
-    if (streamingText || thinkingText) {
-      const agentMessage: Message = {
-        id: Date.now().toString(),
-        text: streamingText,
-        ...(thinkingText ? { thinking: thinkingText } : {}),
-        sender: 'agent',
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, agentMessage])
-      setStreamingText('')
-      setThinkingText('')
-    }
+    // Use functional state updates to read the latest values and avoid stale closures
+    setStreamingText(currentStreamingText => {
+      setThinkingText(currentThinkingText => {
+        if (currentStreamingText || currentThinkingText) {
+          const agentMessage: Message = {
+            id: Date.now().toString(),
+            text: currentStreamingText,
+            ...(currentThinkingText ? { thinking: currentThinkingText } : {}),
+            sender: 'agent',
+            timestamp: new Date()
+          }
+          setMessages(prev => [...prev, agentMessage])
+        }
+        return ''
+      })
+      return ''
+    })
 
     setCurrentTool(null)
     setIsLoading(false)
