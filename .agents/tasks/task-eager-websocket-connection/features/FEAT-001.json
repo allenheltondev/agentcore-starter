@@ -1,0 +1,30 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Move WebSocket connection lifecycle from Chat component to an app-level WebSocket context, enabling eager connection right after authentication.",
+  "status": "in_progress",
+  "steps": [
+    "Step 1: Update `frontend/src/services/api.ts` - Make sessionId optional in `getPresignedWebSocketUrl()`. Change the signature to `getPresignedWebSocketUrl(accessToken: string, sessionId?: string)` (note: reorder params so accessToken comes first since it's always required). Update the fetch body to only include sessionId if provided: `body: JSON.stringify(sessionId ? { sessionId } : {})`.",
+    "Step 2: Update `frontend/src/services/websocket.ts` - Make sessionId optional in the `connect()` method signature: `async connect(sessionId?: string): Promise<void>`. Update the call to `apiService.getPresignedWebSocketUrl(accessToken, sessionId)` to match the new API signature. The rest of the WebSocket connection logic remains the same.",
+    "Step 3: Create `frontend/src/contexts/WebSocketContext.tsx` - Create a new context following the AuthContext pattern. The context should: (a) Export a `WebSocketProvider` component that takes children. (b) Use `useAuth()` to watch for authenticated user. (c) When user becomes authenticated (user !== null and !isLoading), immediately call `wsService.connect()` without a sessionId. (d) Expose via context: `wsService` (the WebSocketService instance), `connectionStatus` ('disconnected' | 'connecting' | 'connected'), `sendMessage(text: string, sessionId: string, userId?: string)` helper. (e) Handle reconnection logic (visibility change, online event) - move this from Chat.tsx. (f) Handle disconnect on logout (when user becomes null). (g) Export a `useWebSocket()` hook similar to `useAuth()`. Important: Create a NEW WebSocketService instance inside the provider (don't use the exported singleton) so the lifecycle is properly managed.",
+    "Step 4: Update `frontend/src/App.tsx` - Import `WebSocketProvider` from `./contexts/WebSocketContext`. Wrap the Routes inside `<WebSocketProvider>` which itself is inside `<AuthProvider>`. The tree becomes: AuthProvider > WebSocketProvider > Routes.",
+    "Step 5: Refactor `frontend/src/components/Chat.tsx` - Remove all WebSocket lifecycle code (connectWebSocket function, wsServiceRef, connectionStatus state, the useEffect that calls connectWebSocket, the useEffect for visibility/online reconnection). Instead: (a) Import and use `useWebSocket()` hook to get `connectionStatus`, `wsService`, `sendMessage`. (b) Keep all the stream event handlers (handleStreamEvent, handleComplete, handleError, handleClose) but subscribe/unsubscribe them via wsService.on/off in a useEffect. (c) The `sendMessage` local function should use the context's sendMessage or directly call `wsService.sendQuery(text, sessionId, userId)`. (d) Keep the session ID generation logic, message UI state, streaming state, etc. (e) Keep the auto-send initial query logic but trigger it based on connectionStatus from context."
+  ],
+  "acceptance_criteria": [
+    "TypeScript compiles without errors: `npx tsc --noEmit` passes in frontend/",
+    "Vite build succeeds: `npm run build` passes in frontend/",
+    "WebSocketContext.tsx exists and exports WebSocketProvider and useWebSocket hook",
+    "App.tsx wraps routes with WebSocketProvider inside AuthProvider",
+    "Chat.tsx no longer imports WebSocketService directly or manages connection lifecycle",
+    "Chat.tsx uses useWebSocket() hook for connection status and sending messages",
+    "The api.ts getPresignedWebSocketUrl method accepts sessionId as optional",
+    "The websocket.ts connect() method accepts sessionId as optional",
+    "Reconnection logic (visibility change, online event) lives in WebSocketContext, not Chat"
+  ],
+  "verification": [
+    "Run `npx tsc --noEmit` in frontend/ directory and confirm zero errors",
+    "Run `npm run build` in frontend/ directory and confirm successful build output"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

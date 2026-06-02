@@ -1,0 +1,24 @@
+{
+  "project_type": "React + TypeScript SPA with Vite bundler, AWS backend (SAM/Lambda/AgentCore)",
+  "language": "TypeScript (frontend), JavaScript (backend Lambda functions)",
+  "build_system": "Vite for frontend, SAM for backend. Frontend build: tsc && vite build",
+  "test_framework": "No test framework configured in frontend package.json. Backend has a test_websocket.py for the agent.",
+  "build_command": "cd frontend && npm run build",
+  "test_command": "cd frontend && npx tsc --noEmit",
+  "verification_instructions": "1. Run `npx tsc --noEmit` in frontend/ to verify TypeScript compiles. 2. Run `npm run build` in frontend/ to verify Vite build succeeds.",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "cd frontend && npm install",
+  "environment_constraints": "COMMON_DEPENDENCIES network mode - npm install works. Node 22 available. No Docker needed for frontend validation.",
+  "contribution_requirements": "No CONTRIBUTING.md found. Follow existing code patterns (contexts pattern, service singletons).",
+  "key_patterns": "Contexts pattern: AuthContext.tsx provides auth state via useAuth() hook. Services are singleton instances exported from modules (authService, apiService, websocketService). WebSocketService class uses event emitter pattern with on/off/emit. Chat.tsx currently owns entire WS lifecycle including connect, reconnect on visibility/network, disconnect on unmount. The connect() method requires sessionId but the sessionId is actually sent per-message via sendQuery(). The backend websocket-connect.js Lambda makes sessionId optional in the presigned URL generation (it uses a fallback UUID if none provided).",
+  "relevant_files": [
+    "frontend/src/contexts/AuthContext.tsx",
+    "frontend/src/contexts/WebSocketContext.tsx (to create)",
+    "frontend/src/services/websocket.ts",
+    "frontend/src/services/api.ts",
+    "frontend/src/components/Chat.tsx",
+    "frontend/src/App.tsx",
+    "backend/functions/websocket-connect.js"
+  ],
+  "directory_structure": "frontend/src/contexts/ - React context providers (AuthContext). frontend/src/services/ - Service classes (auth, api, websocket, userService). frontend/src/components/ - React components (Chat, Home, Layout, Login, etc.). frontend/src/config/ - API config. backend/functions/ - Lambda functions."
+}

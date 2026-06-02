@@ -1,0 +1,7 @@
+{
+  "task_id": "task-eager-websocket-connection",
+  "task_description": "Move WebSocket connection lifecycle from Chat component to app-level context so the connection is established eagerly right after authentication, reducing perceived latency when opening a chat.",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": null
+}

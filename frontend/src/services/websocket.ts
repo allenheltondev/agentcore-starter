@@ -27,7 +27,7 @@ export class WebSocketService {
   /**
    * Connect to WebSocket using AWS SigV4 presigned URL
    */
-  async connect(sessionId: string): Promise<void> {
+  async connect(sessionId?: string): Promise<void> {
     try {
       const accessToken = await authService.getAccessToken();
       if (!accessToken) {
@@ -35,7 +35,7 @@ export class WebSocketService {
       }
 
       // Request presigned WebSocket URL from backend (JWT-authenticated)
-      const presignedData = await apiService.getPresignedWebSocketUrl(sessionId, accessToken);
+      const presignedData = await apiService.getPresignedWebSocketUrl(accessToken, sessionId);
 
       return new Promise((resolve, reject) => {
         try {

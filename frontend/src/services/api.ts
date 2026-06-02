@@ -37,7 +37,7 @@ export class ApiService {
     return getUserId();
   }
 
-  async getPresignedWebSocketUrl(sessionId: string, accessToken: string): Promise<PresignedWebSocketUrl> {
+  async getPresignedWebSocketUrl(accessToken: string, sessionId?: string): Promise<PresignedWebSocketUrl> {
     const url = `${this.baseUrl}/websocket/connect`;
 
     try {
@@ -47,7 +47,7 @@ export class ApiService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify(sessionId ? { sessionId } : {}),
       });
 
       if (!response.ok) {
