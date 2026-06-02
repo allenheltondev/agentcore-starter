@@ -27,7 +27,7 @@ export class WebSocketService {
   /**
    * Connect to WebSocket using AWS SigV4 presigned URL
    */
-  async connect(sessionId: string): Promise<void> {
+  async connect(sessionId?: string): Promise<void> {
     try {
       const accessToken = await authService.getAccessToken();
       if (!accessToken) {
@@ -35,7 +35,7 @@ export class WebSocketService {
       }
 
       // Request presigned WebSocket URL from backend (JWT-authenticated)
-      const presignedData = await apiService.getPresignedWebSocketUrl(sessionId, accessToken);
+      const presignedData = await apiService.getPresignedWebSocketUrl(accessToken, sessionId);
 
       return new Promise((resolve, reject) => {
         try {
@@ -143,15 +143,32 @@ export class WebSocketService {
   }
 
   /**
-   * Disconnect and clean up
+   * Close the WebSocket connection without clearing listeners.
+   * Used for reconnect paths where handlers should persist.
    */
-  disconnect(): void {
+  close(): void {
     if (this.ws) {
       this.ws.close(1000, 'Client disconnect');
       this.ws = null;
     }
-    this.listeners.clear();
     this.authenticationCompleted = false;
+  }
+
+  /**
+   * Fully disconnect and clean up all resources.
+   * Closes the socket AND clears all event listeners.
+   * Used only on unmount or logout.
+   */
+  destroy(): void {
+    this.close();
+    this.listeners.clear();
+  }
+
+  /**
+   * @deprecated Use close() for reconnects or destroy() for full cleanup.
+   */
+  disconnect(): void {
+    this.destroy();
   }
 
   /**
