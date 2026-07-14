@@ -1,0 +1,22 @@
+{
+  "name": "agentcore-starter-agent",
+  "version": "0.1.0",
+  "description": "The AgentCore Runtime artifact: hosts @readysetcloud/agent behind a WebSocket for the example app.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node --experimental-strip-types src/index.ts",
+    "lint": "eslint \"src/**/*.ts\""
+  },
+  "dependencies": {
+    "@readysetcloud/agent": "*",
+    "@strands-agents/sdk": "1.9.0",
+    "bedrock-agentcore": "0.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}

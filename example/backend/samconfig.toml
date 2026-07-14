@@ -1,0 +1,32 @@
+version = 0.1
+
+# ResourcePrefix and ArtifactsBucketName vary per account/environment and are
+# supplied by the deploy workflow (or samconfig.local.toml / --parameter-overrides).
+# ResourcePrefix must be alphanumeric+underscore (AgentCore resource naming).
+
+[default.build.parameters]
+parallel = true
+cached = true
+beta_features = true
+
+[default.deploy.parameters]
+stack_name = "agentcore-chatbot-backend-dev"
+resolve_s3 = true
+s3_prefix = "agentcore-chatbot-backend"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+  "Environment=dev",
+  "ResourcePrefix=agentcore_chatbot_dev",
+]
+
+[production.deploy.parameters]
+stack_name = "agentcore-chatbot-backend-production"
+resolve_s3 = true
+s3_prefix = "agentcore-chatbot-backend"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+  "Environment=production",
+  "ResourcePrefix=agentcore_chatbot_production",
+]

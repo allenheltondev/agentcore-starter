@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Build the publishable packages first: downstream typechecks/tests
+      # (frontend, backend) resolve @readysetcloud/agent + ui-chat from dist.
+      - name: Build packages
+        run: npm run build
+
+      - name: Lint
+        run: |
+          npm run lint --workspaces --if-present
+
+      # Typechecks test files too, so the stream contract test's `satisfies`
+      # assertions against the real @strands-agents/sdk types are enforced.
+      - name: Typecheck (incl. contract tests)
+        run: npm run typecheck -w packages/agent
+
+      - name: Test
+        run: npm test --workspaces --if-present
+
+      - name: Typecheck AgentCore artifact
+        run: npx tsc -p example/backend/agent/tsconfig.json
+
+      - name: Bundle AgentCore artifact
+        run: npm run build -w example/backend/agent
+
+      - name: Build frontend
+        working-directory: example/frontend
+        env:
+          VITE_API_BASE_URL: https://example.invalid/api/
+          VITE_AWS_REGION: us-east-1
+          VITE_USER_POOL_CLIENT_ID: ci-placeholder
+        run: npm run build
+
+      - name: Validate SAM template
+        working-directory: example/backend
+        run: |
+          pipx install aws-sam-cli
+          sam validate --region us-east-1
