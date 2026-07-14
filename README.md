@@ -1,103 +1,106 @@
-# AgentCore Chatbot
+# AgentCore Chatbot Starter (Node/TypeScript)
 
-AI-powered chatbot built on AWS Bedrock AgentCore Runtime with real-time WebSocket streaming and conversation memory.
+An AI chatbot on **AWS Bedrock AgentCore Runtime** with real-time WebSocket
+streaming and conversation memory — rewritten in Node/TypeScript following the
+Ready, Set, Cloud serverless paradigms (`readysetcloud/newsletter-service`,
+`allenheltondev/content-tracking`).
 
-## Getting Started with this Template
+The reusable pieces are factored into two packages destined for
+[`readysetcloud/rsc-core`](https://github.com/readysetcloud):
 
-1. Click **"Use this template"** on GitHub to create your own repository.
-2. Edit `project.yaml` in the repo root and set your project name:
-   ```yaml
-   project_name: my-awesome-chatbot
-   ```
-3. Everything else derives automatically from that single value:
-   - CloudFormation stack names (e.g. `my-awesome-chatbot-backend-dev`, `my-awesome-chatbot-frontend-dev`)
-   - S3 artifact prefixes in SAM configuration
-   - Local development script defaults
+- **`@readysetcloud/agent`** (`packages/agent`) — a portable, framework-agnostic
+  agent core: a [Strands-TS](https://github.com/strands-agents) assistant with
+  DynamoDB-backed conversation snapshots and S3-Vectors semantic memory.
+- **`@readysetcloud/ui-chat`** (`packages/ui`) — React chat components + a
+  WebSocket hook (`useAgentChat`). Migrates into the existing
+  `@readysetcloud/ui` package.
 
-No other configuration files need to be changed when starting a new project from this template.
+An `example/` app wires both together and is deployable on its own.
 
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌────────────────────────┐
-│   React UI  │────▶│  API Gateway +   │────▶│  Lambda Functions       │
-│  (Cognito)  │     │  Cognito Auth    │     │  - websocket-connect    │
-└──────┬──────┘     └──────────────────┘     │  - websocket-info       │
-       │                                      │  - agentcore-invoke     │
-       │  WebSocket (SigV4 presigned URL)     └────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────────┐     ┌──────────────────┐
-│  AgentCore Runtime               │────▶│  AgentCore Memory│
-│  (Strands Agent + Bedrock LLM)   │     │  (Persistence)   │
-└──────────────────────────────────┘     └──────────────────┘
+┌────────────┐   presigned wss:// (SigV4)   ┌──────────────────────────┐
+│  React UI  │─────────────────────────────▶│  AgentCore Runtime       │
+│ (Cognito)  │                               │  NODE_22 · Strands-TS    │
+└─────┬──────┘                               └───────────┬──────────────┘
+      │ POST /websocket/connect (JWT)                    │
+      ▼                                                  ▼
+┌───────────────────┐                       ┌─────────────────────────────┐
+│ websocket-connect │                       │ DynamoDB (history+snapshots) │
+│ Lambda (SigV4)    │                       │ S3 Vectors (semantic memory) │
+└───────────────────┘                       └───────────┬─────────────────┘
+                                                         │ DynamoDB stream
+                                                         ▼
+                                              ┌────────────────────────┐
+                                              │ vectorize-turn Lambda  │
+                                              └────────────────────────┘
 ```
 
-- **Frontend**: React + TypeScript with Cognito authentication (S3 + CloudFront)
-- **Backend**: AWS Lambda + API Gateway + Step Functions (SAM)
-- **AI/ML**: AgentCore Runtime with real-time WebSocket streaming
-- **Agent**: Strands framework (Python) with AgentCore Memory for conversation persistence
-- **Auth**: Cognito User Pool (JWT) for API Gateway; SigV4 presigned URLs for AgentCore WebSocket
+- Browser authenticates with **Cognito**, calls `POST /websocket/connect` to get
+  a **SigV4 presigned WebSocket URL**, then streams directly to the AgentCore
+  Runtime — the transport is unchanged from the original.
+- The **agent** (`@readysetcloud/agent`) runs in AgentCore Runtime, streaming
+  tokens over the socket and persisting each turn to DynamoDB.
+- A DynamoDB-stream **vectorizer** embeds turns into an S3 Vectors index; the
+  agent's `recall_memory` tool queries it for cross-session recall. This
+  replaces AgentCore Memory.
 
-### Authentication Flow
-
-1. User signs in via Cognito (JWT token)
-2. JWT authenticates REST API calls to API Gateway
-3. Lambda generates a SigV4 presigned WebSocket URL using its IAM role
-4. Browser connects directly to AgentCore Runtime via the presigned URL
-5. Agent streams responses back over the WebSocket connection
-
-## Project Structure
+## Layout
 
 ```
-backend/
-  agents/agent/           # AgentCore agent (Python/Strands)
-    agent.py              # WebSocket + HTTP handlers, streaming, memory
-    requirements.txt      # Python dependencies
-  functions/              # Lambda functions (Node.js)
-    websocket-connect.js  # SigV4 presigned URL generation
-    agentcore-invoke.js   # HTTP invocation (legacy)
-  workflows/              # Step Functions state machine
-  template.yaml           # SAM template (backend infra)
-  openapi.yaml            # API Gateway spec with Cognito authorizer
-frontend/
-  src/
-    components/           # React components (Chat, Login, Signup, etc.)
-    contexts/             # Auth context (Cognito integration)
-    services/             # API, WebSocket, and auth services
-  template.yaml           # SAM template (S3 + CloudFront)
+packages/
+  agent/     @readysetcloud/agent      — assistant, memory, tools, wire protocol
+  ui/        @readysetcloud/ui-chat     — Chat component, useAgentChat hook, ws client
+example/
+  backend/   SAM app: presign Lambda, vectorizer, single table, S3 Vectors, AgentCore Runtime
+    agent/   the NODE_22 AgentCore artifact (imports @readysetcloud/agent)
+  frontend/  Vite/React app consuming both packages + @readysetcloud/ui for auth/shell
 ```
 
-## Getting Started
+## Develop
 
 ```bash
-./setup-local-dev.sh
+npm install
+npm run build          # build the two packages (needed before frontend/backend)
+npm test               # agent + ui + backend tests
+npm run lint
 ```
 
-Or manually:
+Run the frontend against a deployed backend:
 
 ```bash
-# Backend
-cd backend && sam build && sam deploy --guided
-
-# Frontend
-cd frontend && npm install && npm run dev
+cp example/frontend/.env.example example/frontend/.env.local   # fill from stack outputs
+npm run dev -w example/frontend
 ```
 
-## Environment Variables
+## Deploy
 
-### Backend (Agent - set in SAM template)
+```bash
+# 1. Package + upload the agent artifact, then deploy the backend stack.
+npm run package:agent
+( cd example/backend/agent/.artifact && zip -r ../agent.zip . )
+aws s3 cp example/backend/agent/agent.zip s3://<artifacts-bucket>/agents/agent.zip
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `AGENTCORE_MEMORY_ID` | Yes | AgentCore Memory resource ID |
-| `AWS_REGION` | No | AWS region (default: us-east-1) |
-| `BEDROCK_MODEL_ID` | No | Bedrock model ID (default: us.amazon.nova-lite-v1:0) |
+cd example/backend
+sam build --beta-features
+sam deploy --guided   # supply ArtifactsBucketName, ResourcePrefix
+```
 
-### Frontend (set in `.env`)
+CI (`.github/workflows/ci.yml`) lints, tests, and builds everything on every PR.
+`deploy.yml` packages the agent and deploys the backend on merge to `main`.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_API_URL` | Yes | API Gateway endpoint URL |
-| `VITE_COGNITO_USER_POOL_ID` | Yes | Cognito User Pool ID |
-| `VITE_COGNITO_CLIENT_ID` | Yes | Cognito App Client ID |
+> **Note:** the AgentCore Node runtime is `NODE_22` (single supported version),
+> arm64. Verify the CloudFormation `EntryPoint` literal (`index.js`) on your
+> first deploy — see the migration notes.
+
+## Environment
+
+**Backend** (SAM parameters): `Environment`, `ResourcePrefix`,
+`ArtifactsBucketName`, `AgentDirectDeployKey`, `BedrockModelId`,
+`EmbeddingModelId`.
+
+**Frontend** (`.env.local`): `VITE_API_BASE_URL`, `VITE_AWS_REGION`,
+`VITE_USER_POOL_CLIENT_ID`.
+
+See [MIGRATION.md](MIGRATION.md) for how the packages lift into `rsc-core`.

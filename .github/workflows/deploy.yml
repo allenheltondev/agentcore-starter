@@ -1,0 +1,78 @@
+name: Deploy
+
+# Deploys the backend stack + the Node AgentCore agent artifact. Frontend
+# hosting is intentionally left to the rsc-core finalization phase (which owns
+# shared hosting); this workflow covers the AgentCore-specific deployment.
+#
+# Required GitHub config:
+#   secrets.AWS_DEPLOY_ROLE_ARN   OIDC role for sam deploy + S3 upload
+#   vars.ARTIFACTS_BUCKET_NAME    S3 bucket for the agent artifact + SAM packaging
+#   vars.RESOURCE_PREFIX          alphanumeric+underscore AgentCore resource prefix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'example/backend/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    name: Deploy backend + agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package + upload agent artifact
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET_NAME }}
+        run: |
+          npm run package:agent
+          ( cd example/backend/agent/.artifact && zip -r ../agent.zip . )
+          aws s3 cp example/backend/agent/agent.zip "s3://${ARTIFACTS_BUCKET}/agents/agent.zip"
+
+      - name: SAM build & deploy
+        working-directory: example/backend
+        env:
+          ARTIFACTS_BUCKET: ${{ vars.ARTIFACTS_BUCKET_NAME }}
+          RESOURCE_PREFIX: ${{ vars.RESOURCE_PREFIX }}
+        run: |
+          # SAM's esbuild builder shells out to esbuild after `npm ci --ignore-scripts`.
+          npm install -g esbuild
+          sam build --beta-features
+          sam deploy \
+            --config-env default \
+            --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides \
+              "Environment=dev" \
+              "ResourcePrefix=${RESOURCE_PREFIX}" \
+              "ArtifactsBucketName=${ARTIFACTS_BUCKET}" \
+              "AgentDirectDeployKey=agents/agent.zip"

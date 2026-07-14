@@ -1,0 +1,425 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AgentCore Chatbot backend (Node/TypeScript). A Strands-TS agent hosted in
+  AgentCore Runtime (NODE_22) streams over a browser-direct WebSocket. Memory is
+  owned by this stack: conversation history + snapshots in a single DynamoDB
+  table, semantic recall in an S3 Vectors index fed by a stream vectorizer.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, production]
+
+  ResourcePrefix:
+    Type: String
+    Description: Alphanumeric prefix for AgentCore resource names (no dashes).
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9_]*'
+
+  ArtifactsBucketName:
+    Type: String
+    Description: S3 bucket holding the AgentCore agent artifact zip.
+
+  AgentDirectDeployKey:
+    Type: String
+    Default: agents/agent.zip
+    Description: S3 key of the packaged NODE_22 agent artifact (dist/index.js + node_modules).
+
+  BedrockModelId:
+    Type: String
+    Default: us.amazon.nova-lite-v1:0
+    Description: Chat model for the assistant. Cross-region inference profile prefix included.
+
+  EmbeddingModelId:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+    Description: >
+      Embedding model for semantic memory (Titan v2 @ 1024 dims). If changed, the
+      ConversationMemoryIndex Dimension must match and existing vectors re-embedded.
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Architectures: [arm64]
+    Tracing: Active
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref ChatbotTable
+        POWERTOOLS_SERVICE_NAME: agentcore-chatbot
+        LOG_LEVEL: info
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+        # Shared with the AgentCore runtime so read (recall) and write (vectorize)
+        # target the same index. S3 Vectors SDK calls take the bucket NAME.
+        VECTOR_BUCKET_NAME: !Sub 'agentcore-chatbot-memory-${Environment}-${AWS::AccountId}'
+        MEMORY_VECTOR_INDEX_NAME: conversation-memory
+        EMBEDDING_MODEL_ID: !Ref EmbeddingModelId
+        BEDROCK_REGION: !Ref AWS::Region
+  Api:
+    TracingEnabled: true
+
+Metadata:
+  esbuild-properties: &esbuild-properties
+    Format: esm
+    Minify: true
+    OutExtension:
+      - .js=.mjs
+    Target: es2022
+    Sourcemap: false
+    Banner:
+      - js=import { createRequire } from 'module'; const require = createRequire(import.meta.url);
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # API: presigned-URL endpoint for the browser-direct AgentCore WebSocket.
+  # ---------------------------------------------------------------------------
+  BackendApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: api
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: ./openapi.yaml
+
+  WebSocketConnectFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - websocket-connect.mjs
+        # The SigV4 presign uses only SDK v3 signing packages; keep the large
+        # @aws-sdk/* out of the bundle (the Lambda runtime provides v3).
+        External:
+          - '@aws-sdk/*'
+    Properties:
+      CodeUri: functions
+      Handler: websocket-connect.handler
+      Description: Generates a SigV4 presigned WebSocket URL for authenticated browsers.
+      Environment:
+        Variables:
+          AGENT_RUNTIME_ARN: !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/${AgentCoreRuntime}'
+      Events:
+        PostWebSocketConnect:
+          Type: Api
+          Properties:
+            RestApiId: !Ref BackendApi
+            Path: /websocket/connect
+            Method: POST
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            # The signed URL grants the browser a WebSocket stream to the runtime.
+            - Effect: Allow
+              Action:
+                - bedrock-agentcore:InvokeAgentRuntime
+                - bedrock-agentcore:InvokeAgentRuntimeWithWebSocketStream
+              Resource: !Sub 'arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*'
+
+  # ---------------------------------------------------------------------------
+  # Single-table store: conversation turns (semantic-memory source), Strands
+  # snapshots, and manifests. GSI1 kept for future list-by-user access. Stream
+  # feeds the vectorizer; TTL (expiresAt) ages rows out after 30 days.
+  # ---------------------------------------------------------------------------
+  ChatbotTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1pk
+          AttributeType: S
+        - AttributeName: gsi1sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: gsi1pk
+              KeyType: HASH
+            - AttributeName: gsi1sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # ---------------------------------------------------------------------------
+  # Semantic memory: S3 Vectors store + the stream-driven embedder.
+  # ---------------------------------------------------------------------------
+  MemoryVectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketName: !Sub 'agentcore-chatbot-memory-${Environment}-${AWS::AccountId}'
+
+  ConversationMemoryIndex:
+    Type: AWS::S3Vectors::Index
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VectorBucketArn: !GetAtt MemoryVectorBucket.VectorBucketArn
+      IndexName: conversation-memory
+      DataType: float32
+      Dimension: 1024
+      DistanceMetric: cosine
+      MetadataConfiguration:
+        NonFilterableMetadataKeys:
+          - text
+
+  VectorizeTurnDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'agentcore-chatbot-vectorize-turn-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600 # 14 days
+
+  VectorizeTurnFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        <<: *esbuild-properties
+        EntryPoints:
+          - vectorize-turn.mjs
+    Properties:
+      CodeUri: functions
+      Handler: vectorize-turn.handler
+      Description: Embeds conversation turns into the semantic-memory vector index.
+      MemorySize: 512
+      Timeout: 60
+      Events:
+        TurnStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt ChatbotTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 5
+            MaximumRetryAttempts: 3
+            BisectBatchOnFunctionError: true
+            # Only Turn rows reach the function: INSERT/MODIFY key off NewImage,
+            # REMOVE off OldImage (REMOVE has no NewImage).
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT","MODIFY"],"dynamodb":{"NewImage":{"entity":{"S":["Turn"]}}}}'
+                - Pattern: '{"eventName":["REMOVE"],"dynamodb":{"OldImage":{"entity":{"S":["Turn"]}}}}'
+            DestinationConfig:
+              OnFailure:
+                Destination: !GetAtt VectorizeTurnDLQ.Arn
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+              Resource:
+                - !GetAtt ChatbotTable.StreamArn
+                - !Sub '${ChatbotTable.StreamArn}/*'
+            # Embed via Titan. Wildcard region/model so a model swap needs no IAM change.
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - !Sub 'arn:${AWS::Partition}:bedrock:*::foundation-model/*'
+            - Effect: Allow
+              Action:
+                - s3vectors:PutVectors
+                - s3vectors:DeleteVectors
+                - s3vectors:GetVectors
+                - s3vectors:QueryVectors
+              Resource:
+                - !GetAtt MemoryVectorBucket.VectorBucketArn
+                - !GetAtt ConversationMemoryIndex.IndexArn
+            - Effect: Allow
+              Action:
+                - sqs:SendMessage
+              Resource:
+                - !GetAtt VectorizeTurnDLQ.Arn
+
+  # ---------------------------------------------------------------------------
+  # AgentCore Runtime: hosts the Node/TypeScript agent artifact (NODE_22).
+  # ---------------------------------------------------------------------------
+  AgentCoreRuntime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Sub '${ResourcePrefix}_agent'
+      AgentRuntimeArtifact:
+        CodeConfiguration:
+          Code:
+            S3:
+              Bucket: !Ref ArtifactsBucketName
+              Prefix: !Ref AgentDirectDeployKey
+          EntryPoint:
+            # The esbuild bundle's entry (see agent/build.mjs). Verify this literal
+            # against a real deploy — Node CodeZip EntryPoint conventions differ
+            # from Python's agent.py.
+            - index.js
+          Runtime: NODE_22
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      RoleArn: !GetAtt AgentCoreRole.Arn
+      EnvironmentVariables:
+        TABLE_NAME: !Ref ChatbotTable
+        VECTOR_BUCKET_NAME: !Sub 'agentcore-chatbot-memory-${Environment}-${AWS::AccountId}'
+        MEMORY_VECTOR_INDEX_NAME: conversation-memory
+        EMBEDDING_MODEL_ID: !Ref EmbeddingModelId
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+        BEDROCK_REGION: !Ref AWS::Region
+
+  AgentCoreRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: AgentCorePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Pull the artifact zip.
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::${ArtifactsBucketName}/*'
+              # Logs + tracing + metrics.
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                  - logs:DescribeLogGroups
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/*'
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: '*'
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: bedrock-agentcore
+              # Chat + embedding model invocation.
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub 'arn:aws:bedrock:*::foundation-model/*'
+                  - !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*'
+              # Conversation history + snapshots.
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !GetAtt ChatbotTable.Arn
+                  - !Sub '${ChatbotTable.Arn}/index/*'
+              # Semantic recall.
+              - Effect: Allow
+                Action:
+                  - s3vectors:QueryVectors
+                  - s3vectors:GetVectors
+                Resource:
+                  - !GetAtt MemoryVectorBucket.VectorBucketArn
+                  - !GetAtt ConversationMemoryIndex.IndexArn
+
+  # ---------------------------------------------------------------------------
+  # Cognito: self-contained user pool for the example. (Migration note: rsc-core
+  # services consume the shared RSC pool via SSM instead of minting their own.)
+  # ---------------------------------------------------------------------------
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      PreventUserExistenceErrors: ENABLED
+
+Outputs:
+  BackendApiUrl:
+    Description: API Gateway base URL.
+    Value: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/api/'
+  AgentCoreRuntimeId:
+    Description: AgentCore Runtime id.
+    Value: !Ref AgentCoreRuntime
+  ChatbotTableName:
+    Description: Single-table name.
+    Value: !Ref ChatbotTable
+  UserPoolId:
+    Description: Cognito User Pool id.
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolId'
+  UserPoolClientId:
+    Description: Cognito User Pool Client id.
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub '${AWS::StackName}-UserPoolClientId'

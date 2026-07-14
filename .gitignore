@@ -1,23 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+.artifact/
+
+# SAM / CloudFormation
 .aws-sam/
 samconfig.yaml
+samconfig.local.toml
+
+# Test / lint caches
+coverage/
+.eslintcache
+
+# Local env
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
 .kiro/
 .DS_Store
-
-# Backend
-backend/node_modules/
-backend/.aws-sam/
-backend/dist/
-backend/coverage/
-
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-venv/
-.env.local

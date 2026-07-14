@@ -1,0 +1,29 @@
+{
+  "name": "agentcore-starter-backend",
+  "version": "0.1.0",
+  "description": "SAM backend for the AgentCore chatbot example: presigned WebSocket URL + semantic-memory vectorizer.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js",
+    "lint": "eslint \"functions/**/*.mjs\" \"services/**/*.mjs\""
+  },
+  "dependencies": {
+    "@readysetcloud/agent": "*",
+    "@aws-lambda-powertools/logger": "^2.34.0",
+    "@aws-sdk/util-dynamodb": "^3.0.0"
+  },
+  "devDependencies": {
+    "@aws-crypto/sha256-js": "^5.2.0",
+    "@aws-sdk/client-dynamodb": "^3.0.0",
+    "@aws-sdk/client-s3vectors": "^3.0.0",
+    "@aws-sdk/credential-provider-node": "^3.0.0",
+    "@aws-sdk/lib-dynamodb": "^3.0.0",
+    "@aws-sdk/signature-v4": "^3.0.0",
+    "@babel/core": "^8.0.1",
+    "@babel/preset-env": "^8.0.2",
+    "@smithy/protocol-http": "^5.0.0",
+    "babel-jest": "^30.3.0",
+    "jest": "^30.3.0"
+  }
+}

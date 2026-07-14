@@ -1,0 +1,32 @@
+{
+  "name": "agentcore-starter",
+  "version": "0.1.0",
+  "description": "AgentCore chatbot starter (Node/TypeScript). Reusable pieces migrate to @readysetcloud/agent and @readysetcloud/ui in rsc-core.",
+  "author": "allenheltondev",
+  "license": "ISC",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/agent",
+    "packages/ui",
+    "example/backend",
+    "example/backend/agent",
+    "example/frontend"
+  ],
+  "scripts": {
+    "build": "npm run build -w packages/agent && npm run build -w packages/ui",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "package:agent": "node scripts/package-agent.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}
